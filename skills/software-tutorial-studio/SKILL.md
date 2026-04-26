@@ -345,13 +345,27 @@ Two pre-built libraries are installed and can be used when building rendered UI 
 
 ## Step 5: Screenshot Asset Preparation
 
-### Mode A (URL) — Placeholder Panels
-For URL-based tutorials where no screenshots are provided, Claude generates
-**rendered UI panels** in Remotion that simulate the platform's interface.
-These are purpose-built React/Tailwind components that approximate the real UI.
-Use DaisyUI and/or shadcn/ui components as building blocks where they fit the
-platform's visual style — this produces more polished panels faster than writing
-everything from scratch.
+### Mode A (URL) — Rendered Panels (preferred over screenshots)
+
+For any tutorial where the platform UI can be recreated in React, **rendered panels are always preferred** over screenshots. They enable:
+- Typing animations (character-by-character text reveal driven by `frame`)
+- Highlight rings applied as CSS (`boxShadow`) directly on the element — no coordinate math
+- `scrollY` translation to reveal below-fold content
+
+Claude generates a single panel component (e.g. `PlatformPanel.tsx`) that accepts:
+- `highlight?: FieldName` — which field/section to ring
+- `highlightOpacity?: number` — driven by `interpolate` in the scene
+- `scrollY?: number` — shift content up for below-fold scenes
+- `values?: { [field]: string }` — typed text for each input, revealed character-by-character
+
+**CSS hierarchy for rendered panels — check in this order before writing anything custom:**
+
+1. **Existing `src/index.css` classes** — check for `.tut-*`, `.instr-*`, `.web-*`, `.tt-*` that already cover the need
+2. **DaisyUI** — `btn`, `badge`, `input`, `textarea`, `card`, `stat`, `alert`, `progress` etc. (already active, zero install)
+3. **shadcn/ui** — `Button`, `Card`, `Input`, `Badge` etc. from `src/components/ui/` (static only, no Radix interactives)
+4. **Custom inline styles** — only for animated values (`opacity`, `transform`, `boxShadow`) or one-off layout that has no library equivalent
+
+Never write a custom CSS class when a DaisyUI or shadcn class already does the job.
 
 ### Mode B / C (Images) — Screenshot Assets
 For each provided screenshot:
@@ -515,52 +529,78 @@ src/tutorials/<flow-slug>/
 Each scene is **audio-length-driven** — its duration is set by the measured
 macOS TTS audio file, not a fixed frame count.
 
-```tsx
-// src/tutorials/<flow-slug>/remotion/scenes/Scene_02.tsx
+### Typing animation (use whenever a field is being filled)
 
+Store example values in `data/typingData.ts` and reveal them character-by-character:
+
+```ts
+// data/typingData.ts
+export const FORM_VALUES = {
+  title:   "My example title",
+  comment: "Detailed comment text goes here...",
+} as const;
+
+/** Reveal text at ~20 chars/sec starting at `startFrame`. */
+export function typeText(text: string, frame: number, startFrame = 35): string {
+  const chars = Math.max(0, Math.floor((frame - startFrame) * (20 / 30)));
+  return text.slice(0, Math.min(chars, text.length));
+}
+```
+
+In a scene, pass the partial string to the panel — carry forward all previously
+typed values so the form looks progressively filled across scenes:
+
+```tsx
+const typedTitle = typeText(FORM_VALUES.title, frame, 40);
+
+<PlatformPanel
+  highlight="title"
+  highlightOpacity={hlOpacity}
+  values={{ title: typedTitle }}
+/>
+```
+
+### Highlight ring (built into the rendered panel component)
+
+Apply `boxShadow` directly on the element — no overlay component needed:
+
+```tsx
+// Inside PlatformPanel.tsx
+const ring = (field: FieldName): React.CSSProperties =>
+  highlight === field
+    ? { boxShadow: `0 0 0 3px rgba(59,130,246,${highlightOpacity})`, borderRadius: 6 }
+    : {};
+
+// On each section div:
+<div style={{ padding: 8, ...ring("title") }}>...</div>
+```
+
+### Full scene template (rendered panel)
+
+```tsx
 export const Scene_02: React.FC = () => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-
-  // Entrance: fade + slide up over 12 frames
-  const opacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
-  const y = interpolate(frame, [0, 12], [20, 0], { extrapolateRight: "clamp" });
-
-  // Highlight pulse: appears at frame 45 (1.5s into scene)
-  const highlightOpacity = interpolate(frame, [45, 55], [0, 1], { extrapolateRight: "clamp" });
+  const opacity   = interpolate(frame, [0, 12],  [0, 1], { extrapolateRight: "clamp" });
+  const hlOpacity = interpolate(frame, [20, 32], [0, 1], { extrapolateRight: "clamp" });
+  const typedTitle = typeText(FORM_VALUES.title, frame, 40);
 
   return (
     <AbsoluteFill style={{ opacity }}>
-      {/* Screenshot or rendered panel */}
-      <div style={{ transform: `translateY(${y}px)` }}>
-        <Img src={staticFile("screenshots/airtable-linked-records/step-2.png")}
-             style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      </div>
-
-      {/* Highlight the target element */}
-      <HighlightBox
-        x={420} y={180} w={200} h={40}
-        frame={frame}
-        showAt={45}
-        color="#3B82F6"
-      />
-
-      {/* Cursor movement to target */}
-      <CursorOverlay x={520} y={200} frame={frame} clickAt={60} />
-      <ClickRipple x={520} y={200} frame={frame} triggerAt={60} />
-
-      {/* Narration caption */}
-      <Caption text="Click the plus icon at the end of the field header row." frame={frame} />
-
-      {/* Step counter */}
+      <PlatformPanel highlight="title" highlightOpacity={hlOpacity} values={{ title: typedTitle }} />
+      <Caption text={TUTORIAL_STEPS[1].narration} frame={frame} />
       <StepCounter current={2} total={7} frame={frame} />
-
-      {/* Synchronized audio */}
-      <Audio src={staticFile("audio/airtable-linked-records/step-2.mp3")} />
+      <Audio src={staticFile("audio/<flow-slug>/step-2.mp3")} />
     </AbsoluteFill>
   );
 };
 ```
+
+### Cursor + ClickRipple (optional — skip by default)
+
+`CursorOverlay` and `ClickRipple` are available in `remotion/overlays/` but are
+**not used by default**. Add them only when the user explicitly requests a cursor
+animation, or when a click/hover interaction is the entire point of the step.
+When used, position them over the highlighted element in the rendered panel.
 
 ---
 
