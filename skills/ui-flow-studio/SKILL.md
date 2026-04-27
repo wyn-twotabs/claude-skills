@@ -4,7 +4,7 @@ description: >
   Generate UI tutorial videos and interactive components from the same source.
   Describe a task flow, a UI mockup idea, or a component with states — the skill
   produces a Remotion animation AND deployable React/Tailwind components in one pass.
-  Three modes: Tutorial, Mockup, State Demo.
+  Four modes: Tutorial, Mockup, State Demo, Live Components (reuses existing app components).
 metadata:
   tags: remotion, tailwind, react, tutorial, ui, animation, components, dual-use, onboarding, prototype
 ---
@@ -25,6 +25,7 @@ One source of truth. Two usable outputs.
 | `tutorial` | An app + a task a user performs | Step-by-step animated walkthrough video + per-step components |
 | `mockup` | A feature or screen idea | Explorable UI mockup video + interactive prototype + **live `npm run dev:site` page** |
 | `state-demo` | A component + its states | State-transition video + live component with all states wired |
+| `live-components` | Paths to existing components + a task | Tutorial video that imports **your** components — no new UI code generated |
 
 ---
 
@@ -33,7 +34,7 @@ One source of truth. Two usable outputs.
 ```
 🎬 Activate UI Flow Studio
 
-Mode: [tutorial | mockup | state-demo]
+Mode: [tutorial | mockup | state-demo | live-components]
 
 # For tutorial mode:
 App: [app name or description]
@@ -49,6 +50,11 @@ UI Style: [same options]
 Component: [describe the component]
 States: [list the states, e.g. "idle, loading, success, error"]
 UI Style: [same options]
+
+# For live-components mode:
+Components: [one or more paths — e.g. "src/components/", "src/features/checkout/CheckoutForm.tsx"]
+Task: [what the user is doing — e.g. "complete a checkout flow"]
+Shell: [optional — path to a layout/shell component that wraps all scenes]
 ```
 
 > `🎬 Activate UI Flow Studio` is the **only** trigger.
@@ -61,13 +67,18 @@ UI Style: [same options]
 Initialize at activation and maintain across all steps:
 
 ```
-mode:           <tutorial | mockup | state-demo>
-app_or_feature: <confirmed subject>
-task_or_states: <confirmed flow or state list>
-ui_style:       <minimal | material | shadcn | custom>
-steps:          [] ← populated in Step 2
-flow_slug:      <kebab-case identifier, e.g. "notion-create-project">
-render_output:  output/<flow-slug>-<YYYYMMDD>.mp4
+mode:             <tutorial | mockup | state-demo | live-components>
+app_or_feature:   <confirmed subject>
+task_or_states:   <confirmed flow or state list>
+ui_style:         <minimal | material | shadcn | custom | existing>
+steps:            [] ← populated in Step 2
+flow_slug:        <kebab-case identifier, e.g. "notion-create-project">
+render_output:    output/<flow-slug>-<YYYYMMDD>.mp4
+
+# live-components mode only:
+component_paths:  <list of resolved paths or globs provided at activation>
+shell_path:       <optional — path to existing shell/layout component>
+discovered:       [] ← populated during Step 0c (component discovery)
 ```
 
 ---
@@ -82,12 +93,15 @@ render_output:  output/<flow-slug>-<YYYYMMDD>.mp4
 - Which Tailwind tokens to use within the selected UI style
 - Caption/annotation text per step
 - Component prop interfaces
+- *(live-components)* Which existing component maps to each tutorial step
+- *(live-components)* Which props to pass at each frame to drive the tutorial state
 
 ### Claude must ask the user
 - Mode and subject (activation)
-- UI style if not provided (Step 0)
+- UI style if not provided (Step 0) — skipped in live-components mode
 - Step plan approval (Gate A)
 - Whether to proceed past each gate
+- *(live-components)* Confirm component-to-step mapping before generating scenes
 
 ---
 
@@ -186,6 +200,45 @@ Run the **Preflight Check**.
 
 ---
 
+## Step 0c: Component Discovery (live-components mode only)
+
+Skip this step for all other modes.
+
+Read every file at the provided `component_paths` (recursively if a directory). For each component file, extract:
+
+- **Export name** — the component identifier to import
+- **Relative path from project root** — used for import statements in scene files
+- **Props interface** — enumerate all props with their types (especially optional ones that control visual state)
+- **Visual role** — infer from the component name and props: is it a page, a form, a card, a shell/layout, a modal, etc.?
+- **State-driving props** — identify props that change what the UI looks like: `isLoading`, `activeStep`, `error`, `value`, `selected`, etc.
+
+Present a discovery report:
+
+```
+Discovered components (N total):
+
+  CheckoutForm       src/features/checkout/CheckoutForm.tsx
+    Props: step: 1|2|3, values: CheckoutValues, onNext: fn, isSubmitting: boolean
+    Role: multi-step form — state-driving props: step, isSubmitting
+
+  OrderSummary       src/features/checkout/OrderSummary.tsx
+    Props: items: CartItem[], total: number, promoApplied?: boolean
+    Role: summary panel — state-driving props: promoApplied
+
+  AppLayout          src/components/AppLayout.tsx
+    Props: children: ReactNode, activePage?: string
+    Role: shell — will wrap all scenes
+    → Designated as shell (matches Shell: input)
+```
+
+If `Shell:` was provided at activation, mark the matching component as the scene wrapper. If it was not provided but a clear layout/shell component is found, suggest it and ask for confirmation in one line.
+
+After the report, ask: **"Does this mapping look right, or should any component be re-assigned?"**
+
+Proceed only after the user confirms.
+
+---
+
 ## Output Structure (All Modes)
 
 ```
@@ -225,6 +278,28 @@ And adds to `package.json`:
 ```
 
 Running `npm run dev:site` opens the standalone interactive page at `http://localhost:5174/site.html`.
+
+**live-components mode output** — no `components/` directory is generated:
+
+```
+src/flows/<flow-slug>/
+├── remotion/
+│   ├── FlowComposition.tsx   ← imports existing components, not generated ones
+│   ├── scenes/
+│   │   ├── Scene_01.tsx      ← imports from existing app paths
+│   │   ├── Scene_02.tsx
+│   │   └── ...
+│   ├── overlays/             ← same overlays as tutorial mode
+│   │   ├── CursorOverlay.tsx
+│   │   ├── ClickRipple.tsx
+│   │   ├── Tooltip.tsx
+│   │   └── Caption.tsx
+│   └── flowTimings.ts
+└── data/
+    └── flow.ts               ← step data, prop snapshots, cursor positions
+```
+
+No new component files are written. All `import` statements in scene files point to the user's existing source paths.
 
 ---
 
@@ -545,6 +620,126 @@ A `StateLabel` overlay shows the current state name in the top-right corner of t
 
 ---
 
+### 🔌 LIVE COMPONENTS MODE
+
+This mode generates **only Remotion scene wrappers**. No new base components are created. All imports point to the user's existing source files.
+
+#### Step 1: Component Discovery
+
+Run Step 0c (component discovery) now if not already done. Confirm the mapping with the user before proceeding.
+
+#### Step 2: Step Breakdown
+
+Decompose the task into discrete steps using the discovered components. For each step define:
+
+```
+Step N:
+  label:        <short action label>
+  caption:      <full sentence for the caption bar>
+  component:    <ExistingComponentName from src/…/Component.tsx>
+  import_path:  <relative path from the scene file to the component>
+  props:        <prop snapshot — the exact prop values that represent this step's UI state>
+  interaction:  <click | type | hover | scroll | none>
+  cursor:       <{ x, y } in video pixels — only for click/hover/type>
+  typing:       <{ prop: "fieldPropName", value: "full string", startFrame: N } — only for type>
+```
+
+**Props snapshot rules:**
+- List every prop that differs from the component's default at this step
+- For type interactions: `typing.prop` is a string prop on the component; the scene drives it character-by-character via `interpolate` on string length
+- For click interactions: show the *before* state; the result appears in the next scene
+
+#### Step 3: Approval Gate A — Step Plan
+
+Present:
+```
+Flow: [FLOW-SLUG]  (live-components mode)
+Task: [TASK]
+Total scenes: N
+
+Step 1: [label]
+  Component:  ExistingComponentName  (src/…)
+  Props:      { step: 1, isLoading: false }
+  Interaction: none — caption: "[caption]"
+
+Step 2: [label]
+  Component:  ExistingComponentName  (src/…)
+  Props:      { step: 1, isLoading: false }
+  Interaction: click at (640, 380) — caption: "[caption]"
+
+...
+```
+
+Await:
+- ✅ **APPROVED** — Proceed to scene generation
+- 🔄 **REVISE** — [specific changes]
+- ❌ **RESTART** — [new direction]
+
+#### Step 4: Scene Generation
+
+Generate one `Scene_0N.tsx` per step. Each scene:
+
+- Imports the existing component using the confirmed `import_path`
+- Passes the step's prop snapshot directly
+- Drives typing props via `interpolate` on string slice (never mutates app state)
+- Composes overlays (cursor, ripple, caption) on top
+- Applies entrance animation (fade + translateY, 12 frames)
+- Wraps the component in the shell if one was designated
+
+**Scene template — live-components mode:**
+
+```tsx
+// src/flows/<flow-slug>/remotion/scenes/Scene_02.tsx
+import React from "react";
+import { AbsoluteFill, useCurrentFrame, interpolate } from "remotion";
+import { CheckoutForm } from "../../../../src/features/checkout/CheckoutForm";
+import { AppLayout } from "../../../../src/components/AppLayout";
+import { CursorOverlay } from "../overlays/CursorOverlay";
+import { Caption } from "../overlays/Caption";
+
+export const Scene_02: React.FC = () => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
+  const y = interpolate(frame, [0, 12], [16, 0], { extrapolateRight: "clamp" });
+
+  // Drive a typing prop character-by-character
+  const emailChars = Math.floor(
+    interpolate(frame, [20, 55], [0, 17], { extrapolateRight: "clamp" })
+  );
+  const email = "user@example.com".slice(0, emailChars);
+
+  return (
+    <AbsoluteFill style={{ opacity }}>
+      <div style={{ transform: `translateY(${y}px)`, height: "100%" }}>
+        <AppLayout activePage="checkout">
+          <CheckoutForm step={1} values={{ email }} isSubmitting={false} />
+        </AppLayout>
+      </div>
+      <CursorOverlay x={640} y={380} frame={frame} clickAt={60} />
+      <Caption text="Enter your email address to continue." frame={frame} />
+    </AbsoluteFill>
+  );
+};
+```
+
+**Import path rule:** Always use a relative path from the scene file to the existing source file. Never use path aliases (`@/`) in scene files — Remotion's bundler may not resolve them unless the project's `tsconfig.paths` is explicitly configured.
+
+If the project uses path aliases and they are confirmed working in Remotion, Claude may use them — but must note this in the Gate C summary.
+
+#### Step 5: Props That Don't Exist
+
+If a step requires a UI state that the existing component cannot express via props (e.g. the component has no `isHighlighted` prop), Claude must choose one option and note it clearly in Gate C:
+
+| Situation | Resolution |
+|---|---|
+| State is visually important but no prop exists | Add a `__tutorialHighlight?: string` prop to the existing component — Claude proposes the minimal diff |
+| State is minor or cosmetic | Overlay a `HighlightBox` or `Tooltip` on top in the scene — no component change needed |
+| Component is too opaque (no useful props) | Report at Gate A: "Component X has no state-driving props — recommend switching to tutorial mode for this step" |
+
+Claude never silently ignores a missing state. It always picks one of the above and explains why.
+
+---
+
 ## Overlay Components
 
 These are generated once per project and reused across all scenes.
@@ -833,26 +1028,28 @@ collisions (e.g. `.myflow-btn-primary`).
 
 ### Setup
 - [ ] Mode and subject confirmed at activation
-- [ ] UI style confirmed (Step 0)
+- [ ] UI style confirmed (Step 0) — *skip for live-components mode*
 - [ ] Session context initialized
 - [ ] Preflight passed
+- [ ] *(live-components)* Component discovery complete (Step 0c) — component-to-step mapping confirmed by user
 
 ### Planning
 - [ ] Step/scene/state plan generated
 - [ ] Plan approved (Gate A)
+- [ ] *(live-components)* Each step lists: component name, import path, prop snapshot, interaction type
 
 ### CSS
 - [ ] `src/index.css` checked for existing classes before creating any new ones
-- [ ] Flow token block written to `src/index.css` under `@layer components` with flow-slug label
+- [ ] Flow token block written to `src/index.css` under `@layer components` with flow-slug label — *skip for live-components if no new overlay classes are needed*
 - [ ] No CSS defined inside any `.tsx` file, `<style>` tag, or separate `.css` file
 - [ ] `style={{}}` used only for values driven by `useCurrentFrame()` / `interpolate()` / `spring()`
 
 ### Generation
 - [ ] `data/flow.ts` generated — all step data typed
-- [ ] `style.ts` generated — token references for this flow's style
+- [ ] `style.ts` generated — token references for this flow's style — *skip for live-components*
 - [ ] `flowTimings.ts` generated — complete frame map
-- [ ] All base components generated (`components/`) — zero Remotion primitives
-- [ ] `AppShell.tsx` generated (tutorial/mockup modes)
+- [ ] All base components generated (`components/`) — zero Remotion primitives — *skip for live-components*
+- [ ] `AppShell.tsx` generated (tutorial/mockup modes) — *skip for live-components (use existing shell)*
 - [ ] All Remotion scenes generated (`remotion/scenes/`)
 - [ ] All overlays generated (`remotion/overlays/`)
 - [ ] `FlowComposition.tsx` assembled — all scenes sequenced
@@ -861,6 +1058,8 @@ collisions (e.g. `.myflow-btn-primary`).
 - [ ] *(mockup mode)* `site.tsx` generated — Vite entry importing the app
 - [ ] *(mockup mode)* `site.html` + `vite.config.ts` present at project root
 - [ ] *(mockup mode)* `dev:site` + `build:site` scripts in `package.json`
+- [ ] *(live-components)* Every scene `import` path verified to resolve from the scene file's location
+- [ ] *(live-components)* Any missing-prop situations documented in Gate C with chosen resolution
 - [ ] Component review approved (Gate C)
 
 ### Render
