@@ -712,7 +712,12 @@ import { TIMED_STEPS } from '../data/flow';
 export const RecordingCaption: React.FC = () => {
   const frame = useCurrentFrame();
 
-  const step = [...TIMED_STEPS].reverse().find(s => frame >= s.captionStart);
+  // Only show captions for steps that have audio.
+  // Steps where audioDuration > captionDuration are skipped for both audio and caption —
+  // they are brief interaction steps (~450ms) with no room for narration.
+  const step = [...TIMED_STEPS].reverse().find(
+    s => frame >= s.captionStart && s.audioDuration <= s.captionDuration
+  );
   if (!step) return null;
 
   const localFrame = frame - step.captionStart;
