@@ -718,8 +718,9 @@ export const RecordingCaption: React.FC = () => {
   const localFrame = frame - step.captionStart;
   const { caption } = step;
   const charCount = Math.floor(
-    interpolate(localFrame, [4, 4 + caption.length * 0.75], [0, caption.length], {
-      extrapolateRight: 'clamp',
+    interpolate(localFrame, [0, caption.length * 0.75], [0, caption.length], {
+      extrapolateLeft: 'clamp',   // required — without this, negative charCount causes slice(0,-N)
+      extrapolateRight: 'clamp',  // which returns nearly the full string, flashing before typewriter
     })
   );
   const opacity = interpolate(frame, [step.captionStart, step.captionStart + 10], [0, 1], {
