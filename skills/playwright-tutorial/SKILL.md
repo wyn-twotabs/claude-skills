@@ -1283,24 +1283,67 @@ Await GO / ADJUST.
 
 ---
 
-## Render
+## Gate D — Testing Phase
 
-### Verify overlays before full render
+**Do not start the render until this gate passes and the user confirms.**
 
-Extract a still for every annotated scene to verify highlight/cursor placement:
+Run the full testing sequence in order. Report every result to the user. Only after all checks pass and the user says "go" should you proceed to the render.
+
+### 1. TypeScript type-check
 
 ```bash
-# scene.start + showAt + 10 for each annotated scene
-npx remotion still PlaywrightTutorial --frame=<N> \
-  --output=public/screenshots/<flow-slug>/verify-scene<N>.png
-
-open public/screenshots/<flow-slug>/verify-scene<N>.png
+npx tsc --noEmit
 ```
 
-Cross-reference with the captured screenshot for the same step — the highlight
-box should sit on the same element in both images. If it's off, the coordinate
-scaling is the first thing to check: re-read the manifest's `viewport` and
-confirm `SCALE_X` / `SCALE_Y` in `coords.ts`.
+All generated files (`data/flow.ts`, `data/mocks.ts`, `remotion/flowTimings.ts`, `remotion/scenes/Scene_*.tsx`, `remotion/overlays/*.tsx`) must compile without errors. Fix any type errors before continuing.
+
+### 2. Extract a Remotion still for every scene
+
+```bash
+# Run for every scene — frame = scene.start + 20 (past entrance animation)
+npx remotion still PlaywrightTutorial --frame=<scene.start + 20> \
+  --output=public/screenshots/<flow-slug>/verify-scene<N>.png
+```
+
+Open all stills:
+
+```bash
+open public/screenshots/<flow-slug>/verify-scene*.png
+```
+
+### 3. Cross-reference with captured screenshots
+
+For every annotated scene, compare:
+- `verify-scene<N>.png` (Remotion still) — highlight box / cursor position
+- `step-<N>.png` (original Playwright screenshot) — actual element position
+
+The highlight ring must sit on the correct element in both images. If it is off, the coordinate scaling is the first thing to check: re-read the manifest `viewport` and confirm `SCALE_X` / `SCALE_Y` in `coords.ts`.
+
+### 4. Present testing summary to the user
+
+Report the outcome of every check before asking to proceed:
+
+```
+Testing phase complete
+
+TypeScript: ✅ 0 errors
+
+Remotion stills:
+  Scene 1  public/screenshots/<flow-slug>/verify-scene1.png  ✅ overlay correct
+  Scene 2  public/screenshots/<flow-slug>/verify-scene2.png  ✅ highlight on correct element
+  Scene 3  public/screenshots/<flow-slug>/verify-scene3.png  ✅ cursor positioned correctly
+  ...
+
+All N scenes verified.
+
+Ready to render? (yes / adjust first)
+```
+
+Do not proceed until the user explicitly confirms. If the user wants adjustments, fix them, re-run the affected stills, and present a revised summary before asking again.
+
+---
+
+## Render
 
 ### Remotion entry file requirement
 
@@ -1408,7 +1451,13 @@ All CSS lives in `src/index.css`. No exceptions.
 - [ ] Any prop-gap situations documented and resolved
 - [ ] Gate C review approved
 
+### Testing (Gate D — must complete before render)
+- [ ] TypeScript type-check passed — 0 errors across all generated files
+- [ ] Remotion still extracted for every scene
+- [ ] All stills cross-referenced against captured screenshots — overlays on correct elements
+- [ ] Testing summary presented to user
+- [ ] User confirmed "go" before render started
+
 ### Render
-- [ ] Overlay stills extracted and verified against captured screenshots
 - [ ] Full render completed
 - [ ] Output: `output/<flow-slug>-<YYYYMMDD>.mp4`
