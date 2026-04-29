@@ -1,5 +1,5 @@
 ---
-name: playwright-tutorial
+name: playwright-tutorial-video
 description: >
   Record a real user flow with Playwright, then generate a Remotion tutorial video.
   Three entry points: capture (discrete screenshots + coordinates per step),
@@ -9,7 +9,7 @@ metadata:
   tags: playwright, remotion, tutorial, live-components, automation, frontend, coordinates, onboarding, recording, video
 ---
 
-# Claude Code Skill: Playwright Tutorial
+# Claude Code Skill: Playwright Tutorial Video
 
 Bridges **Playwright automation** and **Remotion video** in one pipeline.
 
