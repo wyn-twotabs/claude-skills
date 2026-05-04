@@ -2,9 +2,11 @@
 name: playwright-tutorial-video
 description: >
   Record a real user flow with Playwright, then generate a Remotion tutorial video.
-  Three entry points: capture (discrete screenshots + coordinates per step),
-  recording (continuous video with timestamp-synced overlays), or from-manifest
-  (re-generate scenes from existing manifest). No new UI code created.
+  Four entry points: capture (discrete screenshots + coordinates per step),
+  recording (continuous video with timestamp-synced overlays), from-manifest
+  (re-generate scenes from existing manifest), or existing-recording (bring your
+  own screen recording — Claude asks for step details interactively).
+  No new UI code created.
 metadata:
   tags: playwright, remotion, tutorial, live-components, automation, frontend, coordinates, onboarding, recording, video
 ---
@@ -35,10 +37,12 @@ Your app (running)
 | `capture` | App is running — discrete screenshot per step | N scene files, each with a screenshot background |
 | `recording` | App is running — one continuous video of the whole flow | Single `VideoComposition` with `OffthreadVideo` background + timestamp-synced overlays |
 | `from-manifest` | Capture already done — regenerate scenes from existing manifest | Same as whichever entry produced the manifest |
+| `existing-recording` | You already have a screen recording (.mp4, .mov, .webm, .avi) — no Playwright needed | Same `VideoComposition` as recording mode — OffthreadVideo + captions + highlights |
 
 **Choosing between `capture` and `recording`:**
 - Use `capture` when the flow has distinct, pausable states you want to show one at a time
 - Use `recording` when the flow has continuous motion (scroll, drag, typing) or you want the real interactions visible in the video rather than simulated cursor overlays
+- Use `existing-recording` when you already have a recording from QuickTime, Loom, OBS, or any other tool and want to add captions, highlights, and narration without re-recording
 
 ---
 
@@ -47,7 +51,7 @@ Your app (running)
 ```
 🎭 Activate Playwright Tutorial
 
-Entry: [capture | recording | from-manifest]
+Entry: [capture | recording | from-manifest | existing-recording]
 
 # For capture entry:
 App URL:    [e.g. http://localhost:3000]
@@ -65,6 +69,11 @@ Selectors:  [optional — Claude infers from the task]
 Manifest:   [path to manifest.json — e.g. "public/screenshots/onboarding/manifest.json"]
 Components: [paths to existing components — omit for recording manifests]
 Shell:      [optional]
+
+# For existing-recording entry:
+Video:      [path to video file — e.g. ~/Desktop/demo.mp4 or ./assets/recording.mov]
+Task:       [overall description of what the user is demonstrating]
+Steps:      [optional — describe key moments with timestamps; Claude will ask interactively if omitted]
 ```
 
 > `🎭 Activate Playwright Tutorial` is the **only** trigger.
@@ -77,18 +86,20 @@ Shell:      [optional]
 Initialize at activation and maintain across all steps:
 
 ```
-entry:            <capture | recording | from-manifest>
-app_url:          <URL of running app>
+entry:            <capture | recording | from-manifest | existing-recording>
+app_url:          <URL of running app — omit for existing-recording entry>
 task:             <what the user is doing>
 flow_slug:        <kebab-case — e.g. "onboarding-checklist">
-component_paths:  <list of resolved paths — omit for recording entry>
+component_paths:  <list of resolved paths — omit for recording/existing-recording entry>
 shell_path:       <optional — path to existing shell/layout component>
 viewport:         <populated from manifest — e.g. { width: 1280, height: 720 }>
 video:            { width: 1920, height: 1080, fps: 30 }
-manifest_path:    public/recordings/<flow-slug>/manifest.json   ← recording entry
+manifest_path:    public/recordings/<flow-slug>/manifest.json   ← recording/existing-recording entry
                   public/screenshots/<flow-slug>/manifest.json  ← capture entry
 render_output:    output/<flow-slug>-<YYYYMMDD>.mp4
 discovered:       [] ← capture entry only
+video_source:     <original video path — existing-recording entry only>
+video_info:       <populated from ffprobe — duration, resolution, fps, codec — existing-recording entry only>
 ```
 
 ---
@@ -142,6 +153,209 @@ npx tsx --version
 ```
 ✅ Preflight passed. Proceeding with flow: [FLOW-SLUG]
 ```
+
+---
+
+## Step 0er: Preflight — existing-recording entry
+
+**Skip the main Step 0 preflight for `existing-recording`.** No Playwright, no app URL, no tsx needed.
+Run only these checks instead:
+
+```bash
+# Verify file exists and is readable
+test -f "<video-path>" && echo "found" || echo "not found"
+
+# Get video metadata
+ffprobe -v error \
+  -show_entries format=duration,size \
+  -show_entries stream=width,height,r_frame_rate,codec_name \
+  -select_streams v:0 \
+  -of json "<video-path>"
+
+# Confirm ffmpeg available for conversion
+ffmpeg -version | head -1
+
+# Remotion project initialized
+node -e "require('./package.json').dependencies['remotion'] && console.log('ok')"
+```
+
+Populate `video_info` from ffprobe output and report:
+
+```
+Video found: <path>
+Duration: Xs  |  Resolution: WxH  |  FPS: N  |  Codec: <codec>
+Conversion: [needed → will convert to webm | not needed — already .webm]
+
+✅ Preflight passed. Proceeding with flow: [FLOW-SLUG]
+```
+
+---
+
+## Step 1er: Prepare Video — existing-recording entry
+
+Copy or convert the source video to `public/recordings/<flow-slug>/recording.webm`.
+Remotion's `OffthreadVideo` requires `.webm` for reliable frame-accurate playback.
+
+```bash
+mkdir -p public/recordings/<flow-slug>
+
+# Already .webm — copy directly (no re-encode)
+cp "<video-path>" public/recordings/<flow-slug>/recording.webm
+
+# Any other format (.mp4, .mov, .avi, etc.) — convert via VP9
+ffmpeg -i "<video-path>" \
+  -c:v libvpx-vp9 -crf 30 -b:v 0 \
+  -c:a libopus \
+  public/recordings/<flow-slug>/recording.webm
+```
+
+**Large file warning:** If the source file is > 500MB, warn the user before converting.
+Offer a faster alternative: `-c:v libvpx-vp9 -deadline realtime -cpu-used 8` (lower quality, much faster).
+
+After copying/converting, confirm the file is in place:
+```bash
+ls -lh public/recordings/<flow-slug>/recording.webm
+```
+
+Then proceed directly to Step 2er — no capture scripts, no component discovery.
+
+---
+
+## Step 2er: Collect Step Descriptions — existing-recording entry
+
+**If `Steps:` was provided at activation** — parse them immediately using the format below
+and skip to Step 3er.
+
+**If `Steps:` was omitted** — ask the user:
+
+```
+Video ready: public/recordings/<flow-slug>/recording.webm
+Duration: Xs at WxH.
+
+Now describe each key moment you want highlighted in the tutorial.
+For each step provide (one per line or as a list):
+
+  Timestamp  |  Label  |  Caption for the viewer  |  Highlight area (optional)
+
+Timestamp:  seconds from the start — e.g. 0s, 5s, 12.5s, or approximate ("around 8 seconds")
+Caption:    what the viewer should understand at this moment — a full sentence works best
+Highlight:  rough location of the key element — e.g. "top-right button", "center form",
+            "left sidebar", "bottom-center" — or omit if no highlight is needed
+
+Example:
+  0s    | Dashboard loads     | "The dashboard shows all your recent projects."              | left sidebar
+  6s    | Click New Project   | "Click '+ New Project' to start creating."                   | top-right
+  14s   | Enter name          | "Type the project name — it appears across all views."       | center input
+  22s   | Click Create        | "Click 'Create' to confirm. The project opens immediately."  | bottom-center
+
+Be as detailed as possible with your captions — richer text produces better narration.
+You can also provide exact pixel coordinates if you know them: x:500, y:300, w:200, h:50
+```
+
+**Accepted formats for `Steps:` at activation (any of these work):**
+
+```
+Steps: |
+  0s    | Dashboard loads    | The dashboard shows recent projects.   | left sidebar
+  6s    | Click New Project  | Click + New to create a project.       | top-right
+```
+
+or plain prose:
+```
+Steps: At 0s the dashboard loads with the sidebar visible. At 6 seconds the user clicks
+  New Project in the top-right. Around 14s they type the project name in the center input.
+```
+
+Claude parses either format before Step 3er.
+
+---
+
+## Step 3er: Build Manifest from User Descriptions — existing-recording entry
+
+Parse the step descriptions and write `public/recordings/<flow-slug>/manifest.json`
+using the existing `RecordingManifest` format (same schema as `recording` mode,
+so `from-manifest` also works downstream).
+
+### Timestamp parsing rules
+
+| Input | Result |
+|---|---|
+| `0s`, `5s`, `12.5s` | exact ms (×1000) |
+| `"around 8 seconds"`, `"~8s"` | 8000ms |
+| `"about halfway"` | `videoDurationMs / 2` |
+| `"near the end"`, `"at the end"` | `videoDurationMs − 2000` |
+
+### Interaction inference (from label + caption text)
+
+| Keywords present | `interaction` value |
+|---|---|
+| "click", "press", "tap", "select" | `"click"` |
+| "type", "enter", "fill", "input", "write" | `"fill"` |
+| anything else | `"none"` |
+
+### Highlight area → pixel bounding box
+
+Using the actual video W×H from ffprobe. All values rounded to integers.
+
+| User says | x | y | w | h |
+|---|---|---|---|---|
+| "top-left" | `W×0.01` | `H×0.01` | `W×0.20` | `H×0.20` |
+| "top-right" | `W×0.75` | `H×0.01` | `W×0.24` | `H×0.20` |
+| "top-center" | `W×0.35` | `H×0.01` | `W×0.30` | `H×0.20` |
+| "center" / "middle" | `W×0.30` | `H×0.35` | `W×0.40` | `H×0.30` |
+| "left sidebar" | `W×0.00` | `H×0.00` | `W×0.20` | `H×1.00` |
+| "right sidebar" | `W×0.80` | `H×0.00` | `W×0.20` | `H×1.00` |
+| "bottom" | `W×0.20` | `H×0.75` | `W×0.60` | `H×0.25` |
+| "bottom-center" | `W×0.35` | `H×0.75` | `W×0.30` | `H×0.25` |
+| omitted / "full screen" | `null` — no highlight |
+
+If the user provides exact pixel values (`x:500, y:300, w:200, h:50`), use them directly.
+
+### Write the manifest
+
+```json
+{
+  "flowSlug": "<flow-slug>",
+  "capturedAt": "<ISO timestamp>",
+  "recordingFile": "public/recordings/<flow-slug>/recording.webm",
+  "videoDurationMs": <duration in ms from ffprobe>,
+  "viewport": { "width": <W>, "height": <H> },
+  "steps": [
+    {
+      "step": 1,
+      "label": "<label>",
+      "caption": "<caption>",
+      "startMs": <ms>,
+      "interaction": "none",
+      "element": { "selector": "user-described", "x": 0, "y": 0, "width": 384, "height": 1080 }
+    }
+  ]
+}
+```
+
+For steps with no highlight, set `"element": null`.
+For `element.selector`, use `"user-described"` — there is no real DOM selector.
+
+### Report to user and gate
+
+```
+Manifest created: public/recordings/<flow-slug>/manifest.json
+
+  Step 1  @0.0s    Dashboard loads      [none]   highlight: left sidebar (0, 0, 384, 1080)
+  Step 2  @6.0s    Click New Project    [click]  highlight: top-right (1440, 11, 461, 216)
+  Step 3  @14.0s   Enter name           [fill]   highlight: center (576, 378, 768, 324)
+  Step 4  @22.0s   Click Create         [click]  highlight: bottom-center (672, 810, 576, 270)
+
+Total duration: Xs
+
+Does this look right? Correct timestamps, relabel steps, or adjust highlight areas
+before I generate the Remotion composition.
+```
+
+**Gate:** await user approval. After approval, proceed directly to **Step 1c** (TTS audio)
+and then **Step 2b** (Recording Mode Remotion Composition). Skip all capture-mode steps
+(Steps 1–5, component discovery, coordinate scaling, scene files). The `existing-recording`
+output is always recording-style: one `VideoComposition.tsx` with `OffthreadVideo`.
 
 ---
 
@@ -1383,6 +1597,11 @@ public/screenshots/<flow-slug>/
 ├── step-02.png
 └── ...
 
+public/recordings/<flow-slug>/
+├── recording.webm                ← Playwright recording (recording entry)
+│                                    OR copied/converted from user's video (existing-recording entry)
+└── manifest.json                 ← timed steps + highlight coords + video duration
+
 src/flows/<flow-slug>/
 ├── data/
 │   ├── flow.ts                   ← step data + scaled coordinates
@@ -1404,6 +1623,10 @@ src/flows/<flow-slug>/
 output/
 └── <flow-slug>-<YYYYMMDD>.mp4   ← final render
 ```
+
+**For `existing-recording` entry:** no `scripts/` files are created, no `public/screenshots/`
+directory. Only `public/recordings/<flow-slug>/recording.webm` (from the user's source video)
+and the manifest (built from user step descriptions).
 
 No `components/` directory is ever created. All scene imports point to the
 user's existing source files.
@@ -1427,6 +1650,13 @@ All CSS lives in `src/index.css`. No exceptions.
 ### Setup
 - [ ] Preflight passed — Playwright, tsx, Remotion, app URL all verified
 - [ ] `scripts/playwright-capture.ts` written to project
+
+### Existing Recording (existing-recording entry)
+- [ ] Video file verified — ffprobe metadata reported (duration, resolution, fps, codec)
+- [ ] Video prepared at `public/recordings/<flow-slug>/recording.webm`
+- [ ] Step descriptions collected (interactively or parsed from activation input)
+- [ ] Manifest built at `public/recordings/<flow-slug>/manifest.json` and approved by user
+- [ ] Continue from Step 1c (TTS audio) then Step 2b (VideoComposition)
 
 ### Capture (capture entry)
 - [ ] `scripts/<flow-slug>-capture.ts` generated and reviewed by user
