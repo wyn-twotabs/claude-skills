@@ -4,8 +4,9 @@ description: >
   Record a real user flow with Playwright, then generate a Remotion tutorial video.
   Four entry points: capture (discrete screenshots + coordinates per step),
   recording (continuous video with timestamp-synced overlays), from-manifest
-  (re-generate scenes from existing manifest), or existing-recording (bring your
-  own screen recording — Claude asks for step details interactively).
+  (re-generate scenes from existing manifest), or manual-recording (bring your
+  own screen recording and manually describe the steps — Claude asks for
+  step details interactively, no Playwright run needed).
   No new UI code created.
 metadata:
   tags: playwright, remotion, tutorial, live-components, automation, frontend, coordinates, onboarding, recording, video
@@ -37,12 +38,12 @@ Your app (running)
 | `capture` | App is running — discrete screenshot per step | N scene files, each with a screenshot background |
 | `recording` | App is running — one continuous video of the whole flow | Single `VideoComposition` with `OffthreadVideo` background + timestamp-synced overlays |
 | `from-manifest` | Capture already done — regenerate scenes from existing manifest | Same as whichever entry produced the manifest |
-| `existing-recording` | You already have a screen recording (.mp4, .mov, .webm, .avi) — no Playwright needed | Same `VideoComposition` as recording mode — OffthreadVideo + captions + highlights |
+| `manual-recording` | You already have a screen recording (.mp4, .mov, .webm, .avi) and want to manually describe the steps — no Playwright run needed | Same `VideoComposition` as recording mode — OffthreadVideo + captions + highlights |
 
 **Choosing between `capture` and `recording`:**
 - Use `capture` when the flow has distinct, pausable states you want to show one at a time
 - Use `recording` when the flow has continuous motion (scroll, drag, typing) or you want the real interactions visible in the video rather than simulated cursor overlays
-- Use `existing-recording` when you already have a recording from QuickTime, Loom, OBS, or any other tool and want to add captions, highlights, and narration without re-recording
+- Use `manual-recording` when you already have a recording from QuickTime, Loom, OBS, or any other tool and want to manually describe each step (timestamp + caption + highlight area) so Claude can layer captions, highlights, and narration on top — no Playwright run, no automated step extraction
 
 ---
 
@@ -51,7 +52,7 @@ Your app (running)
 ```
 🎭 Activate Playwright Tutorial
 
-Entry: [capture | recording | from-manifest | existing-recording]
+Entry: [capture | recording | from-manifest | manual-recording]
 
 # For capture entry:
 App URL:    [e.g. http://localhost:3000]
@@ -70,10 +71,11 @@ Manifest:   [path to manifest.json — e.g. "public/screenshots/onboarding/manif
 Components: [paths to existing components — omit for recording manifests]
 Shell:      [optional]
 
-# For existing-recording entry:
+# For manual-recording entry (you supply the video AND manually describe the steps):
 Video:      [path to video file — e.g. ~/Desktop/demo.mp4 or ./assets/recording.mov]
 Task:       [overall description of what the user is demonstrating]
-Steps:      [optional — describe key moments with timestamps; Claude will ask interactively if omitted]
+Steps:      [optional — manually describe each key moment with timestamp + caption + highlight area;
+             Claude will ask interactively if omitted]
 ```
 
 > `🎭 Activate Playwright Tutorial` is the **only** trigger.
@@ -86,20 +88,20 @@ Steps:      [optional — describe key moments with timestamps; Claude will ask 
 Initialize at activation and maintain across all steps:
 
 ```
-entry:            <capture | recording | from-manifest | existing-recording>
-app_url:          <URL of running app — omit for existing-recording entry>
+entry:            <capture | recording | from-manifest | manual-recording>
+app_url:          <URL of running app — omit for manual-recording entry>
 task:             <what the user is doing>
 flow_slug:        <kebab-case — e.g. "onboarding-checklist">
-component_paths:  <list of resolved paths — omit for recording/existing-recording entry>
+component_paths:  <list of resolved paths — omit for recording/manual-recording entry>
 shell_path:       <optional — path to existing shell/layout component>
 viewport:         <populated from manifest — e.g. { width: 1280, height: 720 }>
 video:            { width: 1920, height: 1080, fps: 30 }
-manifest_path:    public/recordings/<flow-slug>/manifest.json   ← recording/existing-recording entry
+manifest_path:    public/recordings/<flow-slug>/manifest.json   ← recording/manual-recording entry
                   public/screenshots/<flow-slug>/manifest.json  ← capture entry
 render_output:    output/<flow-slug>-<YYYYMMDD>.mp4
 discovered:       [] ← capture entry only
-video_source:     <original video path — existing-recording entry only>
-video_info:       <populated from ffprobe — duration, resolution, fps, codec — existing-recording entry only>
+video_source:     <original video path — manual-recording entry only>
+video_info:       <populated from ffprobe — duration, resolution, fps, codec — manual-recording entry only>
 ```
 
 ---
@@ -156,9 +158,9 @@ npx tsx --version
 
 ---
 
-## Step 0er: Preflight — existing-recording entry
+## Step 0er: Preflight — manual-recording entry
 
-**Skip the main Step 0 preflight for `existing-recording`.** No Playwright, no app URL, no tsx needed.
+**Skip the main Step 0 preflight for `manual-recording`.** No Playwright, no app URL, no tsx needed.
 Run only these checks instead:
 
 ```bash
@@ -191,7 +193,7 @@ Conversion: [needed → will convert to webm | not needed — already .webm]
 
 ---
 
-## Step 1er: Prepare Video — existing-recording entry
+## Step 1er: Prepare Video — manual-recording entry
 
 Copy or convert the source video to `public/recordings/<flow-slug>/recording.webm`.
 Remotion's `OffthreadVideo` requires `.webm` for reliable frame-accurate playback.
@@ -221,7 +223,7 @@ Then proceed directly to Step 2er — no capture scripts, no component discovery
 
 ---
 
-## Step 2er: Collect Step Descriptions — existing-recording entry
+## Step 2er: Collect Step Descriptions — manual-recording entry
 
 **If `Steps:` was provided at activation** — parse them immediately using the format below
 and skip to Step 3er.
@@ -270,7 +272,7 @@ Claude parses either format before Step 3er.
 
 ---
 
-## Step 3er: Build Manifest from User Descriptions — existing-recording entry
+## Step 3er: Build Manifest from User Descriptions — manual-recording entry
 
 Parse the step descriptions and write `public/recordings/<flow-slug>/manifest.json`
 using the existing `RecordingManifest` format (same schema as `recording` mode,
@@ -354,7 +356,7 @@ before I generate the Remotion composition.
 
 **Gate:** await user approval. After approval, proceed directly to **Step 1c** (TTS audio)
 and then **Step 2b** (Recording Mode Remotion Composition). Skip all capture-mode steps
-(Steps 1–5, component discovery, coordinate scaling, scene files). The `existing-recording`
+(Steps 1–5, component discovery, coordinate scaling, scene files). The `manual-recording`
 output is always recording-style: one `VideoComposition.tsx` with `OffthreadVideo`.
 
 ---
@@ -1599,7 +1601,7 @@ public/screenshots/<flow-slug>/
 
 public/recordings/<flow-slug>/
 ├── recording.webm                ← Playwright recording (recording entry)
-│                                    OR copied/converted from user's video (existing-recording entry)
+│                                    OR copied/converted from user's video (manual-recording entry)
 └── manifest.json                 ← timed steps + highlight coords + video duration
 
 src/flows/<flow-slug>/
@@ -1624,7 +1626,7 @@ output/
 └── <flow-slug>-<YYYYMMDD>.mp4   ← final render
 ```
 
-**For `existing-recording` entry:** no `scripts/` files are created, no `public/screenshots/`
+**For `manual-recording` entry:** no `scripts/` files are created, no `public/screenshots/`
 directory. Only `public/recordings/<flow-slug>/recording.webm` (from the user's source video)
 and the manifest (built from user step descriptions).
 
@@ -1651,7 +1653,7 @@ All CSS lives in `src/index.css`. No exceptions.
 - [ ] Preflight passed — Playwright, tsx, Remotion, app URL all verified
 - [ ] `scripts/playwright-capture.ts` written to project
 
-### Existing Recording (existing-recording entry)
+### Manual Recording (manual-recording entry)
 - [ ] Video file verified — ffprobe metadata reported (duration, resolution, fps, codec)
 - [ ] Video prepared at `public/recordings/<flow-slug>/recording.webm`
 - [ ] Step descriptions collected (interactively or parsed from activation input)
