@@ -2,51 +2,42 @@
 name: playwright-tutorial-video
 description: >
   Record a real user flow with Playwright, then generate a Remotion tutorial video.
-  Five entry points: capture (discrete screenshots + coordinates per step),
-  recording (scripted Playwright automation with timestamp-synced overlays),
-  interactive-recording (you drive Chromium manually while Playwright records
-  the video and auto-captures click coordinates — pixel-perfect highlights
-  with no scripting), from-manifest (re-generate scenes from existing manifest),
-  or manual-recording (bring your own screen recording and manually describe
-  steps — no Playwright run needed). No new UI code created.
+  Two entry points: scripted-recording (a Playwright script automates the flow
+  end-to-end) and interactive-recording (you drive Chromium manually while
+  Playwright records, auto-capturing click coordinates). Both produce a single
+  continuous video with timestamp-synced caption + highlight overlays and TTS
+  narration. No new UI code is created.
 metadata:
-  tags: playwright, remotion, tutorial, live-components, automation, frontend, coordinates, onboarding, recording, video, interactive
+  tags: playwright, remotion, tutorial, automation, recording, video, interactive, onboarding
 ---
 
 # Claude Code Skill: Playwright Tutorial Video
 
-Bridges **Playwright automation** and **Remotion video** in one pipeline.
+Bridges **Playwright recording** and **Remotion overlays** in one pipeline.
 
-Playwright runs your real app and captures every interaction step — screenshots,
-element coordinates, typed values. That manifest feeds directly into Remotion
-scene generation that imports your **existing** components. No new UI code is
-written. No coordinate guesswork. No manual screenshot measurement.
+Playwright records a real browser session at exactly 1920×1080. Element coordinates are captured live via `getBoundingClientRect()` in the same pixel space, so highlights line up perfectly with the recorded video. The manifest feeds a single Remotion `VideoComposition` that plays `OffthreadVideo` with `HighlightBox`, `Caption`, and `Audio` overlays sequenced by timestamp.
 
 ```
-Your app (running)
-  → Playwright capture script (auto-generated)
-    → manifest.json (steps + screenshots + coords)
-      → Remotion scenes (wrap your existing components)
-        → tutorial video
+Browser session (Playwright @ 1920×1080)
+  → manifest.json (timed steps + pixel-perfect coords)
+    → Remotion VideoComposition (video + overlays + narration)
+      → tutorial.mp4
 ```
 
 ---
 
 ## Entry Points
 
-| Entry | When to use | Output |
-|---|---|---|
-| `capture` | App is running — discrete screenshot per step | N scene files, each with a screenshot background |
-| `recording` | App is running — scripted Playwright automation produces one continuous video | Single `VideoComposition` with `OffthreadVideo` background + timestamp-synced overlays |
-| `interactive-recording` | App is running — you drive Chromium manually, Playwright records + auto-captures click coordinates | Same `VideoComposition` as recording — but coordinates come from real `getBoundingClientRect()` calls during your live flow, no scripting required |
-| `from-manifest` | Capture already done — regenerate scenes from existing manifest | Same as whichever entry produced the manifest |
-| `manual-recording` | You already have a screen recording (.mp4, .mov, .webm, .avi) and want to manually describe the steps — no Playwright run needed | Same `VideoComposition` as recording mode — OffthreadVideo + captions + highlights |
+| Entry | When to use |
+|---|---|
+| `scripted-recording` | You can write a Playwright script that performs the flow — fully automated, repeatable, headless |
+| `interactive-recording` | The flow needs human judgement (2FA, exploratory paths, third-party UIs) — you drive Chromium by hand, every click is auto-captured with bounding-box coords |
+
+Both entries produce the **same downstream artifacts**: one `recording.webm`, one `manifest.json`, one `VideoComposition.tsx`. All steps after the recording phase are shared.
 
 **Choosing between entries:**
-- Use `capture` when the flow has distinct, pausable states you want to show one at a time
-- Use `recording` when you can write a Playwright script that performs the flow — fully automated, repeatable
-- Use `interactive-recording` when the flow needs human judgement (logging in with 2FA, navigating an app you can't easily script) — you drive the browser by hand, but coordinates are still pixel-perfect because Playwright captures bounding boxes live
-- Use `manual-recording` when you already have a recording from QuickTime, Loom, OBS, or any other tool and want to manually describe each step (timestamp + caption + highlight area) — no Playwright run, no automated step extraction
+- `scripted-recording` — your app is running locally, the flow is deterministic (forms, button clicks, navigation), and you want it repeatable for re-renders. Coordinates come from `locator.boundingBox()` calls in the script.
+- `interactive-recording` — the target needs login, the path branches, or you simply want to demonstrate from your own session without writing automation. Coordinates come from real `getBoundingClientRect()` calls injected into every click event.
 
 ---
 
@@ -55,34 +46,19 @@ Your app (running)
 ```
 🎭 Activate Playwright Tutorial
 
-Entry: [capture | recording | interactive-recording | from-manifest | manual-recording]
+Entry: [scripted-recording | interactive-recording]
 
-# For capture entry:
-App URL:    [e.g. http://localhost:3000]
-Task:       [what the user does — e.g. "complete the onboarding checklist"]
-Components: [paths to existing components — e.g. "src/components/, src/features/onboarding/"]
-Shell:      [optional — path to layout/shell component that wraps all scenes]
-Selectors:  [optional — CSS selectors or ARIA labels for key elements; Claude infers if omitted]
-
-# For recording entry:
+# For scripted-recording entry:
 App URL:    [e.g. http://localhost:3000]
 Task:       [what the user does — the full flow to record end-to-end]
 Selectors:  [optional — Claude infers from the task]
+Setup:      [auto (default) — open Chromium first to confirm/log-in/navigate to starting page,
+             then run the headless recording with the captured session
+            | skip — go straight to headless recording (only if URL is public + already at start)]
 
 # For interactive-recording entry (Claude opens Chromium, you drive it manually):
 App URL:    [e.g. https://linear.app — where Chromium should open]
 Task:       [overall description of what you'll demonstrate]
-
-# For from-manifest entry:
-Manifest:   [path to manifest.json — e.g. "public/screenshots/onboarding/manifest.json"]
-Components: [paths to existing components — omit for recording manifests]
-Shell:      [optional]
-
-# For manual-recording entry (you supply the video AND manually describe the steps):
-Video:      [path to video file — e.g. ~/Desktop/demo.mp4 or ./assets/recording.mov]
-Task:       [overall description of what the user is demonstrating]
-Steps:      [optional — manually describe each key moment with timestamp + caption + highlight area;
-             Claude will ask interactively if omitted]
 ```
 
 > `🎭 Activate Playwright Tutorial` is the **only** trigger.
@@ -95,21 +71,19 @@ Steps:      [optional — manually describe each key moment with timestamp + cap
 Initialize at activation and maintain across all steps:
 
 ```
-entry:            <capture | recording | interactive-recording | from-manifest | manual-recording>
-app_url:          <URL of running app — omit for manual-recording entry>
+entry:            <scripted-recording | interactive-recording>
+app_url:          <URL of running app or live site>
 task:             <what the user is doing>
 flow_slug:        <kebab-case — e.g. "onboarding-checklist">
-component_paths:  <list of resolved paths — omit for recording/interactive-recording/manual-recording entry>
-shell_path:       <optional — path to existing shell/layout component>
-viewport:         <always 1920×1080 for interactive-recording; populated from manifest otherwise>
+viewport:         { width: 1920, height: 1080 }   ← always
 video:            { width: 1920, height: 1080, fps: 30 }
-manifest_path:    public/recordings/<flow-slug>/manifest.json   ← recording/interactive-recording/manual-recording entry
-                  public/screenshots/<flow-slug>/manifest.json  ← capture entry
-render_output:    output/<flow-slug>-<YYYYMMDD>.mp4
-discovered:       [] ← capture entry only
-video_source:     <original video path — manual-recording entry only>
-video_info:       <populated from ffprobe — duration, resolution, fps, codec — manual-recording entry only>
-recorder_pid:     <background task id of interactive-record.ts — interactive-recording entry only>
+manifest_path:     public/recordings/<flow-slug>/manifest.json
+recording_path:    public/recordings/<flow-slug>/recording.webm
+storage_state_path: public/recordings/<flow-slug>/storage-state.json   ← written by setup phase if used
+start_url_path:    public/recordings/<flow-slug>/start-url.txt          ← URL the user reached at end of setup
+render_output:     output/<flow-slug>-<YYYYMMDD>.mp4
+setup_pid:         <background task id of recording-setup.ts — scripted-recording when Setup: auto>
+recorder_pid:      <background task id of interactive-record.ts — interactive-recording only>
 ```
 
 ---
@@ -117,29 +91,25 @@ recorder_pid:     <background task id of interactive-record.ts — interactive-r
 ## Autonomy Rules
 
 ### Claude decides autonomously
-- Which existing component maps to each captured step
-- What props to pass to each component to match the captured UI state
-- Typing animation speed and start frame
-- Entrance animation (fade + translateY, 12 frames default)
-- Overlay timing (highlight fade-in, cursor entrance)
-- Caption text (from manifest `caption` field — refined for flow if needed)
-- Scene duration (from interaction type defaults, same as ui-flow-studio)
+- Highlight overlay timing (delay after step start, fade-in, hold duration)
+- Caption typewriter speed and start frame
+- Audio sequencing and trim padding
+- Translating captured click labels into viewer-friendly captions
 
 ### Claude must ask the user
 - Entry point and activation inputs
-- Confirm component-to-step mapping before generating scenes (Gate A)
-- Whether to proceed past Gate C (component review)
+- Confirm the proposed caption + highlight schedule before generating the composition (**Caption Gate**)
+- Confirm "go" before render (**Render Gate**)
 - Any ambiguous selector (asks once, does not re-ask)
 
 ---
 
 ## Step 0: Preflight
 
-Run before any content work begins.
+### scripted-recording entry
 
-### Environment
 ```bash
-# Playwright installed and browsers provisioned
+# Playwright + chromium
 npx playwright --version
 npx playwright install chromium --dry-run 2>&1 | head -1
 
@@ -149,42 +119,22 @@ curl -s -o /dev/null -w "%{http_code}" <APP_URL>
 # Remotion project initialized
 node -e "require('./package.json').dependencies['remotion'] && console.log('ok')"
 
-# tsx available for running capture scripts
+# tsx for running the recording script
 npx tsx --version
 ```
 
-### Directories
-- [ ] `scripts/` directory exists or will be created
-- [ ] `public/screenshots/<flow-slug>/` will be created by the capture script
-- [ ] `src/flows/<flow-slug>/` will be created for scenes
-- [ ] `@remotion/tailwind-v4` and `tailwindcss` in devDependencies
-- [ ] `src/index.css` starts with `@import "tailwindcss"` and has `@theme` block
+### interactive-recording entry
 
-```
-✅ Preflight passed. Proceeding with flow: [FLOW-SLUG]
-```
-
----
-
-## Step 0ir: Preflight — interactive-recording entry
-
-**Skip the main Step 0 preflight for `interactive-recording`.** No app dev-server check needed — the user navigates to a live site (their own app, Linear, Notion, anything reachable in a browser).
-
-Run only these checks:
+No app dev-server check — the user navigates to a live site (their own app, Linear, Notion, anything reachable in a browser).
 
 ```bash
-# Playwright + chromium provisioned
 npx playwright --version
 npx playwright install chromium --dry-run 2>&1 | head -1
-
-# tsx for running the recorder
 npx tsx --version
-
-# Remotion project initialized
 node -e "require('./package.json').dependencies['remotion'] && console.log('ok')"
 ```
 
-Confirm the URL is reachable from a normal browser (don't curl — Linear, Notion etc. require login and may return 4xx without cookies).
+Confirm the URL is reachable from a normal browser (don't `curl` — Linear, Notion etc. require login and may return 4xx without cookies).
 
 ```
 ✅ Preflight passed. Proceeding with flow: [FLOW-SLUG]
@@ -192,21 +142,381 @@ Confirm the URL is reachable from a normal browser (don't curl — Linear, Notio
 
 ---
 
-## Step 1ir: Generate Recorder Script — interactive-recording entry
+## Step 0.5a: Setup Phase — scripted-recording entry
+
+**Default behavior (`Setup: auto`).** Before any scripted recording runs, open headed Chromium at `App URL` so the user can:
+- confirm the URL is the right starting page
+- log in / dismiss cookie banners / dismiss onboarding modals
+- navigate to a deeper starting state (e.g. open a specific project, then start)
+
+When the user signals ready, save `storageState` (cookies + localStorage) and the final URL. The flow-specific recording script in Step 1a loads both — so the headless run starts authenticated, on the same page, with the same client state.
+
+**Skip this section entirely if `Setup: skip`** was specified at activation.
+
+### Generate the setup helper (once per project)
+
+Write `scripts/recording-setup.ts` to the project **once** — skip if already present.
+
+```typescript
+// scripts/recording-setup.ts
+// Usage: npx tsx scripts/recording-setup.ts <flow-slug> <start-url>
+//
+// Drive from chat: touch public/recordings/<flow-slug>/.ir-start once the user
+// confirms they're on the correct starting page (logged in, modals dismissed, etc).
+
+import { chromium } from 'playwright';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as readline from 'readline';
+
+const [, , FLOW_SLUG, START_URL] = process.argv;
+if (!FLOW_SLUG || !START_URL) {
+  console.error('\nUsage: npx tsx scripts/recording-setup.ts <flow-slug> <start-url>\n');
+  process.exit(1);
+}
+
+const RECORDING_DIR  = path.join('public', 'recordings', FLOW_SLUG);
+const STORAGE_PATH   = path.join(RECORDING_DIR, 'storage-state.json');
+const START_URL_PATH = path.join(RECORDING_DIR, 'start-url.txt');
+const SIGNAL_START   = path.join(RECORDING_DIR, '.ir-start');
+const VIEWPORT       = { width: 1920, height: 1080 } as const;
+
+function waitForSignal(): Promise<void> {
+  fs.mkdirSync(RECORDING_DIR, { recursive: true });
+  if (fs.existsSync(SIGNAL_START)) fs.unlinkSync(SIGNAL_START);
+
+  if (process.stdin.isTTY) {
+    return new Promise(resolve => {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      process.stdout.write('\n  On the correct starting page? Press ENTER › ');
+      rl.once('line', () => { rl.close(); resolve(); });
+    });
+  }
+
+  return new Promise(resolve => {
+    const interval = setInterval(() => {
+      if (fs.existsSync(SIGNAL_START)) {
+        fs.unlinkSync(SIGNAL_START);
+        clearInterval(interval);
+        resolve();
+      }
+    }, 250);
+  });
+}
+
+(async () => {
+  console.log('\n┌──────────────────────────────────────────────────────────┐');
+  console.log('│  🎭  Setup Phase — confirm starting page                 │');
+  console.log('│  Browser is open. Log in, dismiss banners, navigate to   │');
+  console.log('│  the exact page where the recording should begin.        │');
+  console.log('└──────────────────────────────────────────────────────────┘\n');
+  console.log(`  Signal (non-TTY): touch ${SIGNAL_START}\n`);
+
+  const browser = await chromium.launch({
+    headless: false,
+    args: ['--disable-infobars', '--no-default-browser-check'],
+  });
+  const ctx  = await browser.newContext({ viewport: VIEWPORT });
+  const page = await ctx.newPage();
+  await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
+
+  await waitForSignal();
+
+  const finalUrl     = page.url();
+  const storageState = await ctx.storageState();
+  fs.mkdirSync(RECORDING_DIR, { recursive: true });
+  fs.writeFileSync(STORAGE_PATH,   JSON.stringify(storageState, null, 2));
+  fs.writeFileSync(START_URL_PATH, finalUrl);
+
+  await ctx.close();
+  await browser.close();
+
+  console.log(`\n✅ Setup complete`);
+  console.log(`   Start URL     ${finalUrl}`);
+  console.log(`   Storage state ${STORAGE_PATH}\n`);
+})();
+```
+
+### Run the setup as a background task
+
+```bash
+mkdir -p public/recordings/<flow-slug>
+npx tsx scripts/recording-setup.ts <flow-slug> <app-url>
+```
+
+### The conversation pattern
+
+```
+1. Claude:   "Chromium is open at <app-url>. Confirm this is the correct starting
+              page — log in or navigate if needed. Tell me when you're ready."
+2. User:     "Looks right" / "ok I'm logged in and on the project page"
+3. Claude:   touch public/recordings/<flow-slug>/.ir-start
+             [waits for the background task to report completion]
+4. Claude:   "Setup saved. Start URL: <captured-url>. Generating recording script..."
+```
+
+Both `storage-state.json` and `start-url.txt` are now in place. Step 1a's generated recording script will load them automatically.
+
+If the user navigates somewhere different than `App URL`, the captured `start-url.txt` becomes the actual recording start URL — so the script doesn't need to re-do navigation.
+
+---
+
+## Step 1a: Generate Recording Script — scripted-recording entry
+
+Write `scripts/playwright-capture.ts` to the project **once** — skip if already present. This is the reusable recording helper.
+
+```typescript
+// scripts/playwright-capture.ts
+import { type Page } from 'playwright';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export interface CapturedElement {
+  selector: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface TimedStep {
+  step: number;
+  label: string;
+  caption: string;
+  startMs: number;
+  interaction: 'click' | 'fill' | 'select' | 'none';
+  element: CapturedElement | null;
+  typedValue?: string;
+}
+
+export interface RecordingManifest {
+  flowSlug: string;
+  capturedAt: string;
+  recordingFile: string;
+  videoDurationMs: number;
+  viewport: { width: number; height: number };
+  steps: TimedStep[];
+}
+
+export class TutorialCaptureRecording {
+  private steps: TimedStep[] = [];
+  private stepIndex = 0;
+  public t0 = 0;
+  private manifestPath: string;
+
+  constructor(private page: Page, private flowSlug: string) {
+    const dir = path.join('public', 'recordings', flowSlug);
+    fs.mkdirSync(dir, { recursive: true });
+    this.manifestPath = path.join(dir, 'manifest.json');
+  }
+
+  start(): void { this.t0 = Date.now(); }
+  private elapsed(): number { return Date.now() - this.t0; }
+
+  private async getBox(selector: string): Promise<CapturedElement | null> {
+    try {
+      const locator = this.page.locator(selector).first();
+      await locator.scrollIntoViewIfNeeded();
+      const box = await locator.boundingBox();
+      if (!box) return null;
+      return { selector, x: box.x, y: box.y, width: box.width, height: box.height };
+    } catch { return null; }
+  }
+
+  /** Mark a moment in the recording with an optional element to highlight — no interaction. */
+  async mark(label: string, caption: string, selector?: string): Promise<void> {
+    const startMs = this.elapsed();
+    const element = selector ? await this.getBox(selector) : null;
+    this.steps.push({ step: ++this.stepIndex, label, caption, startMs, interaction: 'none', element });
+  }
+
+  async click(selector: string, label: string, caption: string): Promise<void> {
+    const startMs = this.elapsed();
+    const element = await this.getBox(selector);
+    this.steps.push({ step: ++this.stepIndex, label, caption, startMs, interaction: 'click', element });
+    await this.page.locator(selector).first().click();
+  }
+
+  async select(selector: string, value: string, label: string, caption: string): Promise<void> {
+    const startMs = this.elapsed();
+    const element = await this.getBox(selector);
+    this.steps.push({ step: ++this.stepIndex, label, caption, startMs, interaction: 'select', element, typedValue: value });
+    await this.page.locator(selector).first().selectOption(value);
+  }
+
+  async fill(selector: string, value: string, label: string, caption: string): Promise<void> {
+    const startMs = this.elapsed();
+    const element = await this.getBox(selector);
+    this.steps.push({ step: ++this.stepIndex, label, caption, startMs, interaction: 'fill', element, typedValue: value });
+    await this.page.locator(selector).first().fill(value);
+  }
+
+  async save(recordingWebmPath: string, videoDurationMs: number): Promise<void> {
+    const vp = this.page.viewportSize() ?? { width: 1920, height: 1080 };
+    const manifest: RecordingManifest = {
+      flowSlug: this.flowSlug,
+      capturedAt: new Date().toISOString(),
+      recordingFile: recordingWebmPath,
+      videoDurationMs,
+      viewport: vp,
+      steps: this.steps,
+    };
+    fs.writeFileSync(this.manifestPath, JSON.stringify(manifest, null, 2));
+    console.log(`\n✅ Recording manifest → ${this.manifestPath}`);
+    console.log(`   Video: ${recordingWebmPath}  (${(videoDurationMs / 1000).toFixed(1)}s)`);
+    this.steps.forEach(s =>
+      console.log(`   Step ${s.step} @${(s.startMs / 1000).toFixed(2)}s: [${s.interaction}] ${s.label}`)
+    );
+  }
+}
+```
+
+Then generate the flow-specific recording script:
+
+```typescript
+// scripts/<flow-slug>-recording.ts
+import { chromium } from 'playwright';
+import { TutorialCaptureRecording } from './playwright-capture';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const FLOW_SLUG = '<flow-slug>';
+const APP_URL   = '<app-url>';
+
+const RECORDING_DIR  = `public/recordings/${FLOW_SLUG}`;
+const STORAGE_PATH   = path.join(RECORDING_DIR, 'storage-state.json');
+const START_URL_PATH = path.join(RECORDING_DIR, 'start-url.txt');
+
+(async () => {
+  // If Step 0.5a (Setup Phase) ran, load the captured session + start URL.
+  // Otherwise fall back to APP_URL with no auth state.
+  const storageState = fs.existsSync(STORAGE_PATH)   ? STORAGE_PATH                                : undefined;
+  const startUrl     = fs.existsSync(START_URL_PATH) ? fs.readFileSync(START_URL_PATH, 'utf8').trim() : APP_URL;
+
+  // headless required — headed mode crashes during recordVideo on many setups.
+  // Viewport matches Remotion composition size — element coordinates are native
+  // 1920×1080 pixels, no scaling needed.
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    storageState,                          // restores cookies + localStorage from setup phase
+    recordVideo: {
+      dir: `${RECORDING_DIR}/`,
+      size: { width: 1920, height: 1080 },
+    },
+  });
+
+  const page    = await context.newPage();
+  const capture = new TutorialCaptureRecording(page, FLOW_SLUG);
+
+  await page.goto(startUrl);
+  // Use domcontentloaded — networkidle never fires with WebSocket-based apps (Convex, Supabase, etc.)
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForSelector('<first-visible-selector>', { timeout: 10000 });
+  await page.waitForTimeout(1000); // let initial animations settle before starting the clock
+
+  capture.start(); // ← t = 0 starts here, not at page.goto()
+
+  // ── Step 1: orientation ──────────────────────────────────────────
+  await capture.mark('Overview', 'caption...', 'selector-to-highlight');
+  await page.waitForTimeout(3000);
+
+  // ── Step 2: first interaction ────────────────────────────────────
+  await capture.click('button:has-text("...")', 'Label', 'Caption...');
+  await page.waitForTimeout(500);
+  await capture.mark('Result state', 'What changed...', 'result-selector');
+  await page.waitForTimeout(3000);
+
+  // … one call per step …
+
+  const endMs = Date.now();
+  await context.close(); // finalizes the .webm
+
+  const videoPath = await page.video()!.path();
+  const videoDurationMs = endMs - capture.t0;
+
+  fs.mkdirSync(path.dirname(`public/recordings/${FLOW_SLUG}/recording.webm`), { recursive: true });
+  fs.renameSync(videoPath, `public/recordings/${FLOW_SLUG}/recording.webm`);
+
+  await capture.save(`public/recordings/${FLOW_SLUG}/recording.webm`, videoDurationMs);
+  await browser.close();
+})();
+```
+
+### Selector inference rules (when `Selectors` not provided at activation)
+
+| Element type | Preferred selector |
+|---|---|
+| Button with visible text | `role=button[name="Submit"]` |
+| Input with placeholder | `[placeholder="Project name"]` |
+| Input with label | `role=textbox[name="Email"]` |
+| `data-testid` present | `[data-testid="submit-btn"]` |
+| Link | `role=link[name="Settings"]` |
+| Fallback | `.class-name` (least preferred — note in script comment) |
+
+### Pacing guide
+
+The single most common mistake is moving too fast — the viewer can't read a caption that's still typing when the next step starts. Minimum wait times:
+
+| After this call | `waitForTimeout` | Why |
+|---|---|---|
+| Initial `mark()` (orientation) | **3000ms** | Caption types ~2s, reader needs ~1s after |
+| `select()` or `click()` | **400–500ms** | Let the UI finish updating |
+| `mark()` after a result | **3000ms** | Hold long enough to read |
+| `click()` for a reset/clear | **1500ms** | Transition only — no caption to read |
+| Final `mark()` | **3500ms** | Last frame — hold extra long |
+
+**Why these numbers:** the typewriter runs at ~40 chars/sec. A 70-char caption takes ~1.75s to type. Viewer needs ~1s to absorb. 3s minimum is the floor, not the target.
+
+**When audio is added (recommended):** replace fixed waits with `audioDurationMs[i] + 800`. Measure first with ffprobe, then set wait times accordingly — see the Audio section.
+
+For `select:nth-of-type()` selectors: unreliable when selects live in separate parent elements. Use `.nth(index)` via an index parameter instead.
+
+---
+
+## Step 2a: Run Recording Script — scripted-recording entry
+
+Present the generated script to the user and ask:
+
+> "Does this look right? Adjust selectors or steps, then run it."
+
+Once approved:
+
+```bash
+npx tsx scripts/<flow-slug>-recording.ts
+```
+
+After completion, report:
+
+```
+Recording complete: public/recordings/<flow-slug>/recording.webm   (Xs)
+Manifest:           public/recordings/<flow-slug>/manifest.json
+Steps captured: N
+
+  1  @0.0s     [none]   Overview
+  2  @3.0s     [click]  Click 'Add new issue'    → x:611  y:769  w:320  h:28
+  ...
+```
+
+Then continue to the **Caption Gate**.
+
+---
+
+## Step 1b: Generate Recorder Script — interactive-recording entry
 
 Write `scripts/interactive-record.ts` to the project **once** — skip if already present.
 
-This is the reusable interactive recording helper. It:
+This recorder:
 - Launches headed Chromium at exactly **1920×1080**
 - Phase 1: lets the user log in / navigate (no recording yet)
-- Phase 2: reopens with `recordVideo` active, restores `storageState` (cookies + localStorage), navigates back to the URL the user reached at end of Phase 1
-- Captures every click via an injected `addEventListener('click', …, true)` that calls `exposeFunction` callbacks with the element's `getBoundingClientRect()`, text, and aria-label
+- Phase 2: reopens with `recordVideo` active, restores `storageState` (cookies + localStorage), navigates back to where the user left Phase 1
+- Captures every click via injected `addEventListener('click', …, true)` → calls `exposeFunction` callbacks with `getBoundingClientRect()`, text, aria-label
 - Captures SPA route changes via `MutationObserver`
 - Writes a `RecordingManifest`-compatible JSON with pixel-perfect coordinates
 
 **Two modes for advancing phases:**
-- **TTY mode** (run from a real terminal): readline `prompt()` — user presses ENTER
-- **File-signal mode** (run from Claude Code, where stdin isn't a TTY): the script polls for `.ir-start` and `.ir-stop` files inside the recording dir. Claude advances phases by `touch`-ing those files at the right moments.
+- **TTY mode** (real terminal): readline `prompt()` — user presses ENTER
+- **File-signal mode** (Claude Code, where stdin isn't a TTY): polls for `.ir-start` / `.ir-stop` files. Claude advances phases by `touch`-ing those files.
 
 The script auto-detects `process.stdin.isTTY` and switches mode.
 
@@ -235,10 +545,8 @@ const VIEWPORT      = { width: 1920, height: 1080 } as const;
 const SIGNAL_START  = path.join(RECORDING_DIR, '.ir-start');
 const SIGNAL_STOP   = path.join(RECORDING_DIR, '.ir-stop');
 
-// Wait for either ENTER (TTY) or a signal file (non-TTY)
 function waitForSignal(signalFile: string, ttyPrompt: string): Promise<void> {
   fs.mkdirSync(path.dirname(signalFile), { recursive: true });
-  // Clean any stale signal from a previous run
   if (fs.existsSync(signalFile)) fs.unlinkSync(signalFile);
 
   if (process.stdin.isTTY) {
@@ -249,7 +557,6 @@ function waitForSignal(signalFile: string, ttyPrompt: string): Promise<void> {
     });
   }
 
-  // File-poll mode for non-TTY (Claude Code background tasks)
   return new Promise(resolve => {
     const interval = setInterval(() => {
       if (fs.existsSync(signalFile)) {
@@ -441,11 +748,11 @@ async function record(
 })();
 ```
 
-This file is generated **once per project**. If `scripts/interactive-record.ts` already exists, skip generation and proceed.
+This file is generated **once per project**. If `scripts/interactive-record.ts` already exists, skip generation.
 
 ---
 
-## Step 2ir: Run Recorder + Drive From Chat — interactive-recording entry
+## Step 2b: Run Recorder + Drive From Chat — interactive-recording entry
 
 Run the script as a **background task** so it stays alive while Claude waits for user signals:
 
@@ -468,7 +775,7 @@ Then drive the two phases by writing signal files at the right moments.
 4. User:     "done"
 5. Claude:   touch public/recordings/<flow-slug>/.ir-stop
              [waits for the script to finalise, reads the produced manifest]
-6. Claude:   "Captured N clicks. Manifest at <path>. Continuing to composition..."
+6. Claude:   "Captured N clicks. Manifest at <path>. Continuing to Caption Gate..."
 ```
 
 ### What the user provides
@@ -488,21 +795,18 @@ Then drive the two phases by writing signal files at the right moments.
 
 ### Notes for Claude
 - After `touch .ir-stop`, **wait until the background task reports completion** before reading the manifest. The `.webm` is finalised on context close, which takes 1–3s.
-- If the user closes the Chromium window manually (instead of signalling), the script handles that path too via `page.once('close')`. The manifest is still written.
-- The recorder rejects clicks that cover >90% of the viewport (background clicks) and clicks within 200ms of the previous one (double-click noise) — no need to filter further.
-- If a recording attempt produces zero usable steps (e.g. user only navigated, never clicked), offer to re-run rather than building an empty composition.
+- If the user closes the Chromium window manually, the script handles that path via `page.once('close')`. Manifest is still written.
+- The recorder rejects clicks covering >90% of the viewport (background clicks) and clicks within 200ms of the previous one (double-click noise).
+- If a recording produces zero usable steps (user only navigated, never clicked), offer to re-run rather than building an empty composition.
 
----
-
-## Step 3ir: Read Manifest + Continue — interactive-recording entry
-
-After `.ir-stop` and the background task completes:
+After completion, read the manifest:
 
 ```bash
 cat public/recordings/<flow-slug>/manifest.json
 ```
 
 Report:
+
 ```
 Manifest read: public/recordings/<flow-slug>/manifest.json
 Recorded: <duration>s at 1920×1080
@@ -513,19 +817,24 @@ Steps: N captured
   ...
 ```
 
-The captured `label` field is element text or aria-label — useful but not viewer-friendly. Captions are empty in the manifest.
+Captured `label` is element text or aria-label — useful but not viewer-friendly. Captions are empty in the manifest. Continue to the **Caption Gate**.
 
-**Refine captions before generating the composition:**
-- Combine multiple captured clicks into a single caption phase when they're part of one logical step (e.g. open dropdown + select option = one caption "Set priority to High")
+---
+
+## Caption Gate
+
+Both entries land here with a `manifest.json`. Refine captions before generating the composition:
+
+- Combine multiple captured clicks into one caption phase when they're part of one logical step (e.g. open dropdown + select option = one caption "Set priority to High")
 - Write captions in the second person, present tense: "Click 'Add new issue' to start creating one."
-- Keep captions ≤ 90 chars where possible — captions auto-typewriter at ~40 chars/sec
+- Keep captions ≤ 90 chars where possible — typewriter runs at ~40 chars/sec
 
-**Show the user the proposed caption + highlight schedule and gate before generating files:**
+Show the proposed caption + highlight schedule and gate before generating files:
 
 ```
 Captions (N phases):
-  0–13.1s  Linear's board organises every issue by workflow status...
-  13.1–16.2s  Click 'Add new issue' to create one in the current column.
+  0–13.1s    Linear's board organises every issue by workflow status...
+  13.1–16.2s Click 'Add new issue' to create one in the current column.
   ...
 
 Highlights (N regions):
@@ -536,669 +845,36 @@ Highlights (N regions):
 Does this look right?
 ```
 
-After approval, **continue to Step 1c (TTS audio) and Step 2b (Recording Mode Remotion Composition)** — same pipeline as the `recording` entry. The manifest format is identical, so all downstream code reuses without changes.
+Await:
+- ✅ **APPROVED** — Proceed to TTS audio + composition
+- 🔄 **REVISE** — apply specific edits, re-present
+- ❌ **RESTART** — re-record
 
 ---
 
-## Step 0er: Preflight — manual-recording entry
+## Step 3: macOS TTS Audio (recommended)
 
-**Skip the main Step 0 preflight for `manual-recording`.** No Playwright, no app URL, no tsx needed.
-Run only these checks instead:
-
-```bash
-# Verify file exists and is readable
-test -f "<video-path>" && echo "found" || echo "not found"
-
-# Get video metadata
-ffprobe -v error \
-  -show_entries format=duration,size \
-  -show_entries stream=width,height,r_frame_rate,codec_name \
-  -select_streams v:0 \
-  -of json "<video-path>"
-
-# Confirm ffmpeg available for conversion
-ffmpeg -version | head -1
-
-# Remotion project initialized
-node -e "require('./package.json').dependencies['remotion'] && console.log('ok')"
-```
-
-Populate `video_info` from ffprobe output and report:
-
-```
-Video found: <path>
-Duration: Xs  |  Resolution: WxH  |  FPS: N  |  Codec: <codec>
-Conversion: [needed → will convert to webm | not needed — already .webm]
-
-✅ Preflight passed. Proceeding with flow: [FLOW-SLUG]
-```
-
----
-
-## Step 1er: Prepare Video — manual-recording entry
-
-Copy or convert the source video to `public/recordings/<flow-slug>/recording.webm`.
-Remotion's `OffthreadVideo` requires `.webm` for reliable frame-accurate playback.
-
-```bash
-mkdir -p public/recordings/<flow-slug>
-
-# Already .webm — copy directly (no re-encode)
-cp "<video-path>" public/recordings/<flow-slug>/recording.webm
-
-# Any other format (.mp4, .mov, .avi, etc.) — convert via VP9
-ffmpeg -i "<video-path>" \
-  -c:v libvpx-vp9 -crf 30 -b:v 0 \
-  -c:a libopus \
-  public/recordings/<flow-slug>/recording.webm
-```
-
-**Large file warning:** If the source file is > 500MB, warn the user before converting.
-Offer a faster alternative: `-c:v libvpx-vp9 -deadline realtime -cpu-used 8` (lower quality, much faster).
-
-After copying/converting, confirm the file is in place:
-```bash
-ls -lh public/recordings/<flow-slug>/recording.webm
-```
-
-Then proceed directly to Step 2er — no capture scripts, no component discovery.
-
----
-
-## Step 2er: Collect Step Descriptions — manual-recording entry
-
-**If `Steps:` was provided at activation** — parse them immediately using the format below
-and skip to Step 3er.
-
-**If `Steps:` was omitted** — ask the user:
-
-```
-Video ready: public/recordings/<flow-slug>/recording.webm
-Duration: Xs at WxH.
-
-Now describe each key moment you want highlighted in the tutorial.
-For each step provide (one per line or as a list):
-
-  Timestamp  |  Label  |  Caption for the viewer  |  Highlight area (optional)
-
-Timestamp:  seconds from the start — e.g. 0s, 5s, 12.5s, or approximate ("around 8 seconds")
-Caption:    what the viewer should understand at this moment — a full sentence works best
-Highlight:  rough location of the key element — e.g. "top-right button", "center form",
-            "left sidebar", "bottom-center" — or omit if no highlight is needed
-
-Example:
-  0s    | Dashboard loads     | "The dashboard shows all your recent projects."              | left sidebar
-  6s    | Click New Project   | "Click '+ New Project' to start creating."                   | top-right
-  14s   | Enter name          | "Type the project name — it appears across all views."       | center input
-  22s   | Click Create        | "Click 'Create' to confirm. The project opens immediately."  | bottom-center
-
-Be as detailed as possible with your captions — richer text produces better narration.
-You can also provide exact pixel coordinates if you know them: x:500, y:300, w:200, h:50
-```
-
-**Accepted formats for `Steps:` at activation (any of these work):**
-
-```
-Steps: |
-  0s    | Dashboard loads    | The dashboard shows recent projects.   | left sidebar
-  6s    | Click New Project  | Click + New to create a project.       | top-right
-```
-
-or plain prose:
-```
-Steps: At 0s the dashboard loads with the sidebar visible. At 6 seconds the user clicks
-  New Project in the top-right. Around 14s they type the project name in the center input.
-```
-
-Claude parses either format before Step 3er.
-
----
-
-## Step 3er: Build Manifest from User Descriptions — manual-recording entry
-
-Parse the step descriptions and write `public/recordings/<flow-slug>/manifest.json`
-using the existing `RecordingManifest` format (same schema as `recording` mode,
-so `from-manifest` also works downstream).
-
-### Timestamp parsing rules
-
-| Input | Result |
-|---|---|
-| `0s`, `5s`, `12.5s` | exact ms (×1000) |
-| `"around 8 seconds"`, `"~8s"` | 8000ms |
-| `"about halfway"` | `videoDurationMs / 2` |
-| `"near the end"`, `"at the end"` | `videoDurationMs − 2000` |
-
-### Interaction inference (from label + caption text)
-
-| Keywords present | `interaction` value |
-|---|---|
-| "click", "press", "tap", "select" | `"click"` |
-| "type", "enter", "fill", "input", "write" | `"fill"` |
-| anything else | `"none"` |
-
-### Highlight area → pixel bounding box
-
-Using the actual video W×H from ffprobe. All values rounded to integers.
-
-| User says | x | y | w | h |
-|---|---|---|---|---|
-| "top-left" | `W×0.01` | `H×0.01` | `W×0.20` | `H×0.20` |
-| "top-right" | `W×0.75` | `H×0.01` | `W×0.24` | `H×0.20` |
-| "top-center" | `W×0.35` | `H×0.01` | `W×0.30` | `H×0.20` |
-| "center" / "middle" | `W×0.30` | `H×0.35` | `W×0.40` | `H×0.30` |
-| "left sidebar" | `W×0.00` | `H×0.00` | `W×0.20` | `H×1.00` |
-| "right sidebar" | `W×0.80` | `H×0.00` | `W×0.20` | `H×1.00` |
-| "bottom" | `W×0.20` | `H×0.75` | `W×0.60` | `H×0.25` |
-| "bottom-center" | `W×0.35` | `H×0.75` | `W×0.30` | `H×0.25` |
-| omitted / "full screen" | `null` — no highlight |
-
-If the user provides exact pixel values (`x:500, y:300, w:200, h:50`), use them directly.
-
-### Write the manifest
-
-```json
-{
-  "flowSlug": "<flow-slug>",
-  "capturedAt": "<ISO timestamp>",
-  "recordingFile": "public/recordings/<flow-slug>/recording.webm",
-  "videoDurationMs": <duration in ms from ffprobe>,
-  "viewport": { "width": <W>, "height": <H> },
-  "steps": [
-    {
-      "step": 1,
-      "label": "<label>",
-      "caption": "<caption>",
-      "startMs": <ms>,
-      "interaction": "none",
-      "element": { "selector": "user-described", "x": 0, "y": 0, "width": 384, "height": 1080 }
-    }
-  ]
-}
-```
-
-For steps with no highlight, set `"element": null`.
-For `element.selector`, use `"user-described"` — there is no real DOM selector.
-
-### Report to user and gate
-
-```
-Manifest created: public/recordings/<flow-slug>/manifest.json
-
-  Step 1  @0.0s    Dashboard loads      [none]   highlight: left sidebar (0, 0, 384, 1080)
-  Step 2  @6.0s    Click New Project    [click]  highlight: top-right (1440, 11, 461, 216)
-  Step 3  @14.0s   Enter name           [fill]   highlight: center (576, 378, 768, 324)
-  Step 4  @22.0s   Click Create         [click]  highlight: bottom-center (672, 810, 576, 270)
-
-Total duration: Xs
-
-Does this look right? Correct timestamps, relabel steps, or adjust highlight areas
-before I generate the Remotion composition.
-```
-
-**Gate:** await user approval. After approval, proceed directly to **Step 1c** (TTS audio)
-and then **Step 2b** (Recording Mode Remotion Composition). Skip all capture-mode steps
-(Steps 1–5, component discovery, coordinate scaling, scene files). The `manual-recording`
-output is always recording-style: one `VideoComposition.tsx` with `OffthreadVideo`.
-
----
-
-## Step 1: Generate Capture Helper (capture entry only)
-
-Write `scripts/playwright-capture.ts` to the project **once** — skip if already present.
-This is the reusable capture utility imported by every flow's capture script.
-
-```typescript
-// scripts/playwright-capture.ts
-import { type Page } from 'playwright';  // type-only import required in ESM projects
-import * as fs from 'fs';
-import * as path from 'path';
-
-export interface CapturedElement {
-  selector: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface CapturedStep {
-  step: number;
-  label: string;
-  caption: string;
-  screenshotFile: string;
-  interaction: 'click' | 'fill' | 'hover' | 'scroll' | 'none';
-  element: CapturedElement | null;
-  typedValue?: string;
-}
-
-export interface FlowManifest {
-  flowSlug: string;
-  capturedAt: string;
-  viewport: { width: number; height: number };
-  steps: CapturedStep[];
-}
-
-export class TutorialCapture {
-  private steps: CapturedStep[] = [];
-  private stepIndex = 0;
-  private screenshotDir: string;
-
-  constructor(
-    private page: Page,
-    private flowSlug: string,
-  ) {
-    this.screenshotDir = path.join('public', 'screenshots', flowSlug);
-    fs.mkdirSync(this.screenshotDir, { recursive: true });
-  }
-
-  private async snapshot(): Promise<string> {
-    const filename = `step-${String(this.stepIndex + 1).padStart(2, '0')}.png`;
-    const filepath = path.join(this.screenshotDir, filename);
-    await this.page.screenshot({ path: filepath, fullPage: false });
-    return filepath;
-  }
-
-  private async getBox(selector: string): Promise<CapturedElement | null> {
-    try {
-      const locator = this.page.locator(selector).first();
-      await locator.scrollIntoViewIfNeeded();
-      const box = await locator.boundingBox();
-      if (!box) return null;
-      return { selector, x: box.x, y: box.y, width: box.width, height: box.height };
-    } catch {
-      return null;
-    }
-  }
-
-  /** Capture a scene with no interaction — screenshot only. */
-  async scene(label: string, caption: string): Promise<void> {
-    const file = await this.snapshot();
-    this.steps.push({
-      step: ++this.stepIndex,
-      label, caption,
-      screenshotFile: file,
-      interaction: 'none',
-      element: null,
-    });
-  }
-
-  /** Capture before click, then click. */
-  async click(selector: string, label: string, caption: string): Promise<void> {
-    const element = await this.getBox(selector);
-    const file = await this.snapshot();
-    this.steps.push({
-      step: ++this.stepIndex,
-      label, caption,
-      screenshotFile: file,
-      interaction: 'click',
-      element,
-    });
-    await this.page.locator(selector).first().click();
-  }
-
-  /** Capture before fill, then fill. */
-  async fill(selector: string, value: string, label: string, caption: string): Promise<void> {
-    await this.page.locator(selector).first().scrollIntoViewIfNeeded();
-    const element = await this.getBox(selector);
-    const file = await this.snapshot();
-    this.steps.push({
-      step: ++this.stepIndex,
-      label, caption,
-      screenshotFile: file,
-      interaction: 'fill',
-      element,
-      typedValue: value,
-    });
-    await this.page.locator(selector).first().fill(value);
-  }
-
-  /** Hover to trigger tooltip/focus state, then capture. */
-  async hover(selector: string, label: string, caption: string): Promise<void> {
-    await this.page.locator(selector).first().hover();
-    const element = await this.getBox(selector);
-    const file = await this.snapshot();
-    this.steps.push({
-      step: ++this.stepIndex,
-      label, caption,
-      screenshotFile: file,
-      interaction: 'hover',
-      element,
-    });
-  }
-
-  /** Scroll to position and capture. */
-  async scroll(scrollY: number, label: string, caption: string): Promise<void> {
-    await this.page.evaluate((y) => window.scrollTo({ top: y, behavior: 'instant' }), scrollY);
-    await this.page.waitForTimeout(100);
-    const file = await this.snapshot();
-    this.steps.push({
-      step: ++this.stepIndex,
-      label, caption,
-      screenshotFile: file,
-      interaction: 'scroll',
-      element: null,
-    });
-  }
-
-  /** Write manifest.json and print summary. */
-  async save(): Promise<string> {
-    const vp = this.page.viewportSize() ?? { width: 1280, height: 720 };
-    const manifest: FlowManifest = {
-      flowSlug: this.flowSlug,
-      capturedAt: new Date().toISOString(),
-      viewport: vp,
-      steps: this.steps,
-    };
-    const out = path.join(this.screenshotDir, 'manifest.json');
-    fs.writeFileSync(out, JSON.stringify(manifest, null, 2));
-    console.log(`\n✅ Captured ${this.steps.length} steps → ${out}`);
-    this.steps.forEach(s =>
-      console.log(`  Step ${s.step}: [${s.interaction}] ${s.label}`)
-    );
-    return out;
-  }
-}
-```
-
----
-
-## Step 2: Generate Flow Capture Script (capture entry only)
-
-Based on the `Task` and `Selectors` provided at activation, generate
-`scripts/<flow-slug>-capture.ts` — the one-off script for this specific flow.
-
-Claude infers selectors from the task description if not provided. Use semantic
-selectors in priority order: ARIA roles > data-testid > text content > CSS class.
-
-**Template:**
-
-```typescript
-// scripts/<flow-slug>-capture.ts
-// Run with: npx tsx scripts/<flow-slug>-capture.ts
-import { chromium } from 'playwright';
-import { TutorialCapture } from './playwright-capture';
-
-const FLOW_SLUG = '<flow-slug>';
-const APP_URL   = '<app-url>';
-
-(async () => {
-  // capture entry uses 1280×720 — screenshots scale ×1.5 to 1920×1080 in coords.ts
-  // recording entry uses 1920×1080 — no scaling needed
-  const browser = await chromium.launch({ headless: false });
-  const page    = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  const capture = new TutorialCapture(page, FLOW_SLUG);
-
-  await page.goto(APP_URL);
-  await page.waitForLoadState('networkidle');
-
-  // ── Step 1: orientation ────────────────────────────────────────────
-  await capture.scene(
-    'Dashboard overview',
-    'Start from the main dashboard. The sidebar shows all your workspaces.',
-  );
-
-  // ── Step 2: first interaction ──────────────────────────────────────
-  await capture.click(
-    '[data-testid="new-project-btn"]',
-    'Click New Project',
-    "Click the '+ New Project' button in the sidebar to open the creation dialog.",
-  );
-
-  // ── Step 3: fill in a field ────────────────────────────────────────
-  await capture.fill(
-    '[placeholder="Project name"]',
-    'Q3 Launch Plan',
-    'Enter project name',
-    "Type the project name. This becomes the title shown across all views.",
-  );
-
-  // … one call per step …
-
-  await capture.save();
-  await browser.close();
-})();
-```
-
-**Selector inference rules** (apply when `Selectors` not provided at activation):
-
-| Element type | Preferred selector |
-|---|---|
-| Button with visible text | `role=button[name="Submit"]` |
-| Input with placeholder | `[placeholder="Project name"]` |
-| Input with label | `role=textbox[name="Email"]` |
-| data-testid present | `[data-testid="submit-btn"]` |
-| Link | `role=link[name="Settings"]` |
-| Fallback | `.class-name` (least preferred — note it in capture script comment) |
-
-Present the generated capture script to the user and ask:
-**"Does this look right? Adjust any selectors or steps, then run it with `npx tsx scripts/<flow-slug>-capture.ts`."**
-
-Wait for the user to confirm the manifest was generated before proceeding.
-
----
-
-## Step 1b: Generate Recording Capture Script (recording entry only)
-
-Add `TutorialCaptureRecording` to `scripts/playwright-capture.ts` **once** — skip if already present.
-
-```typescript
-// Append to scripts/playwright-capture.ts
-
-export interface TimedStep {
-  step: number;
-  label: string;
-  caption: string;
-  startMs: number;          // ms since recording started
-  interaction: 'click' | 'fill' | 'select' | 'none';
-  element: CapturedElement | null;
-  typedValue?: string;
-}
-
-export interface RecordingManifest {
-  flowSlug: string;
-  capturedAt: string;
-  recordingFile: string;    // path to .webm relative to project root
-  videoDurationMs: number;  // populated after context.close()
-  viewport: { width: number; height: number };
-  steps: TimedStep[];
-}
-
-export class TutorialCaptureRecording {
-  private steps: TimedStep[] = [];
-  private stepIndex = 0;
-  private t0 = 0;
-  private manifestPath: string;
-
-  constructor(private page: Page, private flowSlug: string) {
-    const dir = path.join('public', 'recordings', flowSlug);
-    fs.mkdirSync(dir, { recursive: true });
-    this.manifestPath = path.join(dir, 'manifest.json');
-  }
-
-  start(): void {
-    this.t0 = Date.now();
-  }
-
-  private elapsed(): number {
-    return Date.now() - this.t0;
-  }
-
-  private async getBox(selector: string): Promise<CapturedElement | null> {
-    try {
-      const locator = this.page.locator(selector).first();
-      await locator.scrollIntoViewIfNeeded();
-      const box = await locator.boundingBox();
-      if (!box) return null;
-      return { selector, x: box.x, y: box.y, width: box.width, height: box.height };
-    } catch { return null; }
-  }
-
-  /** Mark a moment in the recording with an optional element to highlight — no interaction. */
-  async mark(label: string, caption: string, selector?: string): Promise<void> {
-    const startMs = this.elapsed();
-    const element = selector ? await this.getBox(selector) : null;
-    this.steps.push({ step: ++this.stepIndex, label, caption, startMs, interaction: 'none', element });
-  }
-
-  /** Record a click interaction — visible in the video recording. */
-  async click(selector: string, label: string, caption: string): Promise<void> {
-    const startMs = this.elapsed();
-    const element = await this.getBox(selector);
-    this.steps.push({ step: ++this.stepIndex, label, caption, startMs, interaction: 'click', element });
-    await this.page.locator(selector).first().click();
-  }
-
-  /** Select an option — records the moment the value changes. */
-  async select(selector: string, value: string, label: string, caption: string): Promise<void> {
-    const startMs = this.elapsed();
-    const element = await this.getBox(selector);
-    this.steps.push({ step: ++this.stepIndex, label, caption, startMs, interaction: 'select', element, typedValue: value });
-    await this.page.locator(selector).first().selectOption(value);
-  }
-
-  /** Fill a text field — records as typing begins. */
-  async fill(selector: string, value: string, label: string, caption: string): Promise<void> {
-    const startMs = this.elapsed();
-    const element = await this.getBox(selector);
-    this.steps.push({ step: ++this.stepIndex, label, caption, startMs, interaction: 'fill', element, typedValue: value });
-    await this.page.locator(selector).first().fill(value);
-  }
-
-  /** Write manifest after context.close() — pass the finalized video path and duration. */
-  async save(recordingWebmPath: string, videoDurationMs: number): Promise<void> {
-    const vp = this.page.viewportSize() ?? { width: 1280, height: 720 };
-    const manifest: RecordingManifest = {
-      flowSlug: this.flowSlug,
-      capturedAt: new Date().toISOString(),
-      recordingFile: recordingWebmPath,
-      videoDurationMs,
-      viewport: vp,
-      steps: this.steps,
-    };
-    fs.writeFileSync(this.manifestPath, JSON.stringify(manifest, null, 2));
-    console.log(`\n✅ Recording manifest → ${this.manifestPath}`);
-    console.log(`   Video: ${recordingWebmPath}  (${(videoDurationMs / 1000).toFixed(1)}s)`);
-    this.steps.forEach(s =>
-      console.log(`   Step ${s.step} @${(s.startMs / 1000).toFixed(2)}s: [${s.interaction}] ${s.label}`)
-    );
-  }
-}
-```
-
-Then generate the flow-specific recording script:
-
-```typescript
-// scripts/<flow-slug>-recording.ts
-import { chromium } from 'playwright';
-import { TutorialCaptureRecording } from './playwright-capture';
-import * as fs from 'fs';
-import * as path from 'path';
-
-const FLOW_SLUG = '<flow-slug>';
-const APP_URL   = '<app-url>';
-
-(async () => {
-  // headless required — headed mode crashes during recordVideo on many setups.
-  // Viewport matches Remotion composition size — element coordinates are native
-  // 1920×1080 pixels, no scaling needed.
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
-    recordVideo: {
-      dir: `public/recordings/${FLOW_SLUG}/`,
-      size: { width: 1920, height: 1080 },
-    },
-  });
-
-  const page    = await context.newPage();
-  const capture = new TutorialCaptureRecording(page, FLOW_SLUG);
-
-  await page.goto(APP_URL);
-  // Use domcontentloaded — networkidle never fires with WebSocket-based apps (Convex, Supabase, etc.)
-  await page.waitForLoadState('domcontentloaded');
-  await page.waitForSelector('<first-visible-selector>', { timeout: 10000 });
-  await page.waitForTimeout(1000); // let initial animations settle before starting the clock
-
-  capture.start(); // ← t = 0 starts here, not at page.goto()
-
-  // ── Step 1: orientation ──────────────────────────────────────────
-  await capture.mark('Overview', 'caption...', 'selector-to-highlight');
-  await page.waitForTimeout(3000); // viewers need ~2s to read a full caption after typewriter completes
-
-  // ── Step 2: first interaction ────────────────────────────────────
-  await capture.click('button:has-text("...")', 'Label', 'Caption...');
-  await page.waitForTimeout(500);  // wait for UI to update
-  await capture.mark('Result state', 'What changed...', 'result-selector');
-  await page.waitForTimeout(3000); // hold long enough to read the result caption
-
-  // ── Between steps: reset/clear interactions ───────────────────────
-  await capture.click('button:has-text("Clear")', 'Clear', 'Reset...');
-  await page.waitForTimeout(1500); // shorter — no caption to read, just a transition
-
-  // … one call per step …
-
-  const endMs = Date.now();
-  await context.close(); // finalizes the .webm
-
-  const videoPath = await page.video()!.path();
-  const videoDurationMs = endMs - (capture as any).t0;
-
-  fs.mkdirSync(path.dirname(`public/recordings/${FLOW_SLUG}/recording.webm`), { recursive: true });
-  fs.renameSync(videoPath, `public/recordings/${FLOW_SLUG}/recording.webm`);
-
-  await capture.save(`public/recordings/${FLOW_SLUG}/recording.webm`, videoDurationMs);
-  await browser.close();
-})();
-```
-
-### Recording pacing guide
-
-The single most common mistake is moving too fast — the viewer can't read a caption that's still typing when the next step starts. Minimum wait times:
-
-| After this call | `waitForTimeout` | Why |
-|---|---|---|
-| Initial `mark()` (orientation) | **3000ms** | Caption types ~2s, reader needs ~1s after |
-| `select()` or `click()` (interaction) | **400–500ms** | Let the UI finish updating |
-| `mark()` after showing a result | **3000ms** | Same as orientation — hold long enough to read |
-| `click()` for a reset/clear | **1500ms** | Transition only — no result caption to read |
-| Final `mark()` (end state) | **3500ms** | Last frame — hold it extra long |
-
-**Why these numbers:** The `Caption` component typewriter effect runs at ~40 chars/sec. A 70-char caption takes ~1.75s to finish typing. The viewer then needs ~1s to absorb the fully visible text. So 3s minimum per step is the floor, not the target.
-
-**When audio is added (recommended):** Replace the fixed `HOLD_STEP` constant with the measured audio duration + 1000ms buffer. Measure first with ffprobe, then set wait times accordingly — see the Audio section below.
-
-For `select:nth-of-type()` selectors: these are unreliable when selects live in separate parent elements. Use `.nth(index)` via an index parameter instead. The `TutorialCaptureRecording.select()` method accepts `index = 0` as a fifth argument for exactly this case.
-
----
-
-## Step 1c: macOS TTS Audio (recommended for both entry modes)
-
-Generate one narration audio file per step. The narration text is the step's `caption` field.
+Generate one narration audio file per step. Narration text is the step's `caption`.
 
 ### Voice selection
 
 Default: `Samantha (Enhanced)` — clear, professional US English. No API key required.
 
 ```bash
-# List all available US English voices (reference only)
-say -v '?' | grep "en_US"
+say -v '?' | grep "en_US"   # list voices (reference only)
 ```
 
-### Generate all AIFFs in parallel, then convert
+### Generate AIFFs in parallel, convert to MP3
 
 ```bash
 mkdir -p audio/<flow-slug> public/audio/<flow-slug>
 
-# Generate all AIFFs in parallel (one line per step)
 say -v "Samantha (Enhanced)" -o audio/<flow-slug>/step-01.aiff "Step 1 caption text" &
 say -v "Samantha (Enhanced)" -o audio/<flow-slug>/step-02.aiff "Step 2 caption text" &
 # ... one per step
 wait
 
-# Convert all to 44100Hz stereo MP3 — macOS say outputs 22050Hz mono which
-# causes "no waveform" in Remotion Studio (audio still plays in final renders,
-# but re-encoding ensures full compatibility)
+# macOS say outputs 22050Hz mono — re-encode to 44100Hz stereo for Remotion Studio
 for i in $(seq -w 1 <N>); do
   ffmpeg -y -i audio/<flow-slug>/step-$i.aiff \
     -ar 44100 -ac 2 -codec:a libmp3lame -qscale:a 2 \
@@ -1223,27 +899,23 @@ done
 |---|---|---|
 | `mark()` / `none` | `audioDurationMs + 800` | Audio must finish before next step |
 | `select()` / `click()` (interaction) | `400` | React settles quickly; audio overlaps the next `mark()` |
-| `mark()` after interaction result | `audioDurationMs + 800` | Audio for the result caption |
+| `mark()` after interaction | `audioDurationMs + 800` | Audio for the result caption |
 | Final `mark()` | `audioDurationMs + 1500` | Extra tail at the end |
 
-**Workflow with audio:**
-1. Write the recording script with placeholder `HOLD_STEP = 4000`
-2. Run a dry-run to get caption text into `flow.ts`
+**Workflow with audio (scripted-recording):**
+1. First pass: write the recording script with placeholder `HOLD_STEP = 4000`
+2. Run dry-run to get caption text into `flow.ts`
 3. Generate audio and measure durations
-4. Replace `HOLD_STEP` with per-step values based on measured audio: `audioDurationMs[i] + 800`
+4. Replace `HOLD_STEP` with per-step values: `audioDurationMs[i] + 800`
 5. Re-run the recording with audio-informed timing
 
-### Using audio in Remotion
-
-**capture entry** (scene-based): scene `durationInFrames` is set to the measured audio duration, same as `software-tutorial-studio`. Audio drives timing.
-
-**recording entry** (continuous video): audio plays as a `<Sequence>`-wrapped `<Audio>` overlay starting at each step's `captionStart`. The recording video is the ground truth for timing — make sure `waitForTimeout` values are at least `audioDurationMs + 800` so audio doesn't get cut by the next step.
+**Workflow with audio (interactive-recording):** the recording is already done — generate audio after Caption Gate, then sequence audio in the Remotion composition by `captionStart` (no second recording pass needed).
 
 ---
 
-## Step 2b: Recording Mode Remotion Composition
+## Step 4: Recording Mode Remotion Composition
 
-After the manifest is generated, create a single `VideoComposition.tsx` instead of per-scene files.
+After the manifest is approved, create a single `VideoComposition.tsx`.
 
 ### `msToFrame` utility
 
@@ -1264,12 +936,13 @@ export interface TimedStep {
   label: string;
   caption: string;
   startMs: number;
-  overlayDelayMs: number;   // how long after startMs before overlay appears
+  overlayDelayMs: number;     // how long after startMs before overlay appears
   overlayDurationMs: number;
+  audioDurationMs: number;    // measured from ffprobe
   highlight?: { x: number; y: number; w: number; h: number };
 }
 
-// Paste startMs values from manifest, scale element coords × 1.5
+// Coordinates are already in 1920×1080 space — no scaling needed.
 export const TIMED_STEPS: TimedStep[] = [
   {
     id: 'step-01',
@@ -1278,7 +951,8 @@ export const TIMED_STEPS: TimedStep[] = [
     startMs: 0,
     overlayDelayMs: 200,
     overlayDurationMs: 2800,
-    highlight: { x: 36, y: 78, w: 101, h: 65 }, // scaled
+    audioDurationMs: 3200,
+    highlight: { x: 36, y: 78, w: 101, h: 65 },
   },
   // ...
 ];
@@ -1290,30 +964,30 @@ export const STEPS_WITH_FRAMES = TIMED_STEPS.map(s => ({
   overlayDuration: msToFrame(s.overlayDurationMs),
   captionStart:    msToFrame(s.startMs),
   captionDuration: msToFrame(s.overlayDelayMs + s.overlayDurationMs),
+  audioDuration:   msToFrame(s.audioDurationMs),
 }));
 ```
 
 ### `RecordingCaption.tsx`
 
-**Do not use sequenced `<Caption>` components in recording mode.** Mounting a new `Caption` at each step boundary triggers the slide-up entrance animation repeatedly, and the small inter-step gap causes the bar to flash off and on — visible as glitching on every transition.
+**Do not use sequenced `<Caption>` components.** Mounting a new `Caption` at each step boundary triggers the slide-up entrance repeatedly, and the small inter-step gap causes the bar to flash off and on — visible as glitching on every transition.
 
-Instead, use a single persistent component that stays mounted for the full video duration:
+Use a single persistent component that stays mounted for the full video duration:
 
 ```tsx
 // src/flows/<flow-slug>/remotion/RecordingCaption.tsx
 import React from 'react';
 import { useCurrentFrame, interpolate } from 'remotion';
-import { TIMED_STEPS } from '../data/flow';
+import { STEPS_WITH_FRAMES } from '../data/flow';
 
 // Never unmounts. Finds the active step from the frame and restarts
 // the typewriter at each step boundary without any slide-up animation.
 export const RecordingCaption: React.FC = () => {
   const frame = useCurrentFrame();
 
-  // Only show captions for steps that have audio.
-  // Steps where audioDuration > captionDuration are skipped for both audio and caption —
+  // Skip steps where audio doesn't fit in the caption window —
   // they are brief interaction steps (~450ms) with no room for narration.
-  const step = [...TIMED_STEPS].reverse().find(
+  const step = [...STEPS_WITH_FRAMES].reverse().find(
     s => frame >= s.captionStart && s.audioDuration <= s.captionDuration
   );
   if (!step) return null;
@@ -1322,7 +996,7 @@ export const RecordingCaption: React.FC = () => {
   const { caption } = step;
   const charCount = Math.floor(
     interpolate(localFrame, [0, caption.length * 0.75], [0, caption.length], {
-      extrapolateLeft: 'clamp',   // required — without this, negative charCount causes slice(0,-N)
+      extrapolateLeft:  'clamp',  // required — without this, negative charCount causes slice(0,-N)
       extrapolateRight: 'clamp',  // which returns nearly the full string, flashing before typewriter
     })
   );
@@ -1338,6 +1012,29 @@ export const RecordingCaption: React.FC = () => {
 };
 ```
 
+### `HighlightBox.tsx`
+
+```tsx
+// src/flows/<flow-slug>/remotion/overlays/HighlightBox.tsx
+import React from 'react';
+import { useCurrentFrame, interpolate } from 'remotion';
+
+interface Props { x: number; y: number; w: number; h: number; showAt: number; }
+
+export const HighlightBox: React.FC<Props> = ({ x, y, w, h, showAt }) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [showAt, showAt + 10], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  return (
+    <div
+      className="tut-highlight"
+      style={{ left: x, top: y, width: w, height: h, opacity }}
+    />
+  );
+};
+```
+
 ### `VideoComposition.tsx`
 
 ```tsx
@@ -1346,7 +1043,7 @@ import React from 'react';
 import { AbsoluteFill, OffthreadVideo, staticFile, Sequence, Audio } from 'remotion';
 import { HighlightBox } from './overlays/HighlightBox';
 import { RecordingCaption } from './RecordingCaption';
-import { TIMED_STEPS } from '../data/flow';
+import { STEPS_WITH_FRAMES } from '../data/flow';
 
 export const VideoComposition: React.FC = () => (
   <AbsoluteFill>
@@ -1358,14 +1055,14 @@ export const VideoComposition: React.FC = () => (
     />
 
     {/* Highlight ring per step — sequenced per interaction */}
-    {TIMED_STEPS.filter(s => s.highlight).map(step => (
+    {STEPS_WITH_FRAMES.filter(s => s.highlight).map(step => (
       <Sequence key={`hl-${step.id}`} from={step.overlayStart} durationInFrames={step.overlayDuration}>
         <HighlightBox {...step.highlight!} showAt={0} />
       </Sequence>
     ))}
 
     {/* Audio narration — starts at captionStart, runs for captionDuration */}
-    {TIMED_STEPS.map((step, i) => (
+    {STEPS_WITH_FRAMES.map((step, i) => (
       <Sequence key={`audio-${step.id}`} from={step.captionStart} durationInFrames={step.captionDuration}>
         <Audio src={staticFile(`audio/<flow-slug>/step-${String(i + 1).padStart(2, '0')}.mp3`)} />
       </Sequence>
@@ -1393,7 +1090,7 @@ import { msToFrame } from './flows/<flow-slug>/remotion/msToFrame';
 />
 ```
 
-### Overlay timing rules for recording mode
+### Overlay timing rules
 
 | Step type | `overlayDelayMs` | `overlayDurationMs` |
 |---|---|---|
@@ -1405,487 +1102,9 @@ import { msToFrame } from './flows/<flow-slug>/remotion/msToFrame';
 
 ---
 
-## Step 3: Read Manifest
-
-After the user confirms the capture ran successfully, read the manifest:
-
-```bash
-cat public/screenshots/<flow-slug>/manifest.json
-```
-
-Report what was captured:
-
-```
-Manifest read: public/screenshots/<flow-slug>/manifest.json
-Captured: 2024-11-15T14:32:07Z
-Viewport: 1280×720
-Steps: 7
-
-  1  [none]  Dashboard overview
-  2  [click] Click New Project         → .new-project-btn  (x:192, y:340, w:140, h:36)
-  3  [fill]  Enter project name        → [placeholder="..."] (x:320, y:280, w:400, h:40)  "Q3 Launch Plan"
-  4  [click] Select template           → [data-testid="template-card"] (x:480, y:440, w:200, h:120)
-  5  [none]  Template selected
-  6  [click] Click Create              → role=button[name="Create"] (x:640, y:560, w:120, h:40)
-  7  [none]  Project created — success state
-```
-
----
-
-## Step 4: Component Discovery
-
-Read every file at the provided `component_paths` (recursively if a directory).
-For each component file, extract:
-
-- **Export name** — component identifier for import statements
-- **Relative path from project root** — used in scene file imports
-- **Props interface** — all props with types, especially state-driving ones
-- **Visual role** — page, form, card, shell/layout, modal, etc.
-- **State-driving props** — props that change what the UI looks like
-
-Cross-reference with the manifest: for each captured step, identify which
-existing component most closely represents that UI state.
-
-Present a discovery + mapping report:
-
-```
-Discovered components (N total):
-
-  DashboardPage      src/pages/DashboardPage.tsx
-    Props: workspaces: Workspace[], activeWorkspace?: string
-    Role: page — state-driving: activeWorkspace
-
-  NewProjectModal    src/features/projects/NewProjectModal.tsx
-    Props: isOpen: boolean, onClose: fn, onSubmit: fn, defaultValues?: Partial<Project>
-    Role: modal — state-driving: isOpen, defaultValues
-
-  AppLayout          src/components/AppLayout.tsx
-    Props: children: ReactNode, activePage?: string
-    Role: shell — designated as scene wrapper
-
-Component → step mapping:
-
-  Step 1  DashboardPage      props: { workspaces: MOCK_WORKSPACES }
-  Step 2  DashboardPage      props: { workspaces: MOCK_WORKSPACES }   (cursor on sidebar btn)
-  Step 3  NewProjectModal    props: { isOpen: true, defaultValues: { name: "" } }
-  Step 4  NewProjectModal    props: { isOpen: true, defaultValues: { name: "Q3 Launch Plan" } }
-  ...
-```
-
-Ask: **"Does this mapping look right?"** Proceed only after confirmation.
-
----
-
-## Step 5: Coordinate Scaling
-
-Scale all element coordinates from viewport space to video space (1920×1080).
-
-Generate `src/flows/<flow-slug>/remotion/coords.ts` — the scaling utility for this flow:
-
-```typescript
-// src/flows/<flow-slug>/remotion/coords.ts
-// Scales browser-space coordinates to Remotion video space.
-// Viewport and video dimensions are baked in from the captured manifest.
-
-const VIEWPORT = { width: <viewport.width>, height: <viewport.height> } as const;
-const VIDEO    = { width: 1920, height: 1080 } as const;
-const SCALE_X  = VIDEO.width  / VIEWPORT.width;
-const SCALE_Y  = VIDEO.height / VIEWPORT.height;
-
-interface BrowserRect { x: number; y: number; width: number; height: number }
-export interface VideoRect { x: number; y: number; w: number; h: number }
-
-export function toVideoRect(el: BrowserRect): VideoRect {
-  return {
-    x: Math.round(el.x * SCALE_X),
-    y: Math.round(el.y * SCALE_Y),
-    w: Math.round(el.width  * SCALE_X),
-    h: Math.round(el.height * SCALE_Y),
-  };
-}
-
-export function toCursorCenter(el: BrowserRect): { x: number; y: number } {
-  const r = toVideoRect(el);
-  return { x: r.x + Math.round(r.w / 2), y: r.y + Math.round(r.h / 2) };
-}
-```
-
-Apply scaling to every step that has an `element`. Store scaled results in
-`data/flow.ts` alongside the step data — scenes import from there, not from
-the manifest directly.
-
----
-
-## Step 6: Gate A — Step Plan
-
-Present the complete plan with scaled coordinates before writing any scene files:
-
-```
-Flow:     [FLOW-SLUG]
-Task:     [TASK]
-Scenes:   7
-Duration: ~21s (estimate)
-
-Step 1 — Dashboard overview
-  Component:   DashboardPage (src/pages/DashboardPage.tsx)
-  Props:       { workspaces: MOCK_WORKSPACES }
-  Interaction: none
-  Caption:     "Start from the main dashboard..."
-  Duration:    60f (2s)
-
-Step 2 — Click New Project
-  Component:   DashboardPage
-  Props:       { workspaces: MOCK_WORKSPACES }
-  Interaction: click
-  Cursor:      (288, 709) → scaled from (192, 340) @ 1280×720
-  Highlight:   { x:210, y:693, w:210, h:75 } → scaled
-  Caption:     "Click '+ New Project' in the sidebar..."
-  Duration:    75f (2.5s)
-
-Step 3 — Enter project name
-  Component:   NewProjectModal
-  Props:       { isOpen: true, defaultValues: { name: "" → "Q3 Launch Plan" } }
-  Interaction: fill (typing animation)
-  Cursor:      (480, 583)
-  Highlight:   { x:240, y:560, w:960, h:84 }
-  Caption:     "Type the project name..."
-  Duration:    120f (4s)
-
-...
-```
-
-Await:
-- ✅ **APPROVED** — Proceed to scene generation
-- 🔄 **REVISE** — [specific changes]
-- ❌ **RESTART** — [new direction]
-
----
-
-## Step 7: Generate `data/flow.ts`
-
-All step data as typed constants — scaled coordinates baked in, no runtime math in scene files.
-
-```typescript
-// src/flows/<flow-slug>/data/flow.ts
-
-export interface FlowStep {
-  id: string;
-  step: number;
-  label: string;
-  caption: string;
-  interaction: 'click' | 'fill' | 'hover' | 'scroll' | 'none';
-  cursor?: { x: number; y: number };
-  highlight?: { x: number; y: number; w: number; h: number };
-  typedValue?: string;
-  typingProp?: string;
-}
-
-export const FLOW_STEPS: FlowStep[] = [
-  {
-    id: 'step-01',
-    step: 1,
-    label: 'Dashboard overview',
-    caption: 'Start from the main dashboard. The sidebar shows all your workspaces.',
-    interaction: 'none',
-  },
-  {
-    id: 'step-02',
-    step: 2,
-    label: 'Click New Project',
-    caption: "Click '+ New Project' in the sidebar to open the creation dialog.",
-    interaction: 'click',
-    cursor:    { x: 288, y: 709 },
-    highlight: { x: 210, y: 693, w: 210, h: 75 },
-  },
-  {
-    id: 'step-03',
-    step: 3,
-    label: 'Enter project name',
-    caption: 'Type the project name. This becomes the title shown across all views.',
-    interaction: 'fill',
-    cursor:    { x: 480, y: 583 },
-    highlight: { x: 240, y: 560, w: 960, h: 84 },
-    typedValue: 'Q3 Launch Plan',
-    typingProp: 'name',
-  },
-  // ...
-];
-```
-
----
-
-## Step 8: Scene Generation
-
-Generate `src/flows/<flow-slug>/remotion/scenes/Scene_0N.tsx` for each step.
-
-### Scene template — click interaction
-
-```tsx
-// src/flows/<flow-slug>/remotion/scenes/Scene_02.tsx
-import React from 'react';
-import { AbsoluteFill, useCurrentFrame, interpolate } from 'remotion';
-import { DashboardPage } from '../../../../src/pages/DashboardPage';
-import { AppLayout } from '../../../../src/components/AppLayout';
-import { CursorOverlay } from '../overlays/CursorOverlay';
-import { ClickRipple } from '../overlays/ClickRipple';
-import { HighlightBox } from '../overlays/HighlightBox';
-import { Caption } from '../overlays/Caption';
-import { FLOW_STEPS } from '../../data/flow';
-import { MOCK_WORKSPACES } from '../../data/mocks';
-
-const STEP = FLOW_STEPS[1];
-const CLICK_AT = 45;
-
-export const Scene_02: React.FC = () => {
-  const frame = useCurrentFrame();
-  const opacity   = interpolate(frame, [0, 12],  [0, 1],  { extrapolateRight: 'clamp' });
-  const hlOpacity = interpolate(frame, [20, 32], [0, 1],  { extrapolateRight: 'clamp' });
-
-  return (
-    <AbsoluteFill style={{ opacity }}>
-      <AppLayout activePage="dashboard">
-        <DashboardPage workspaces={MOCK_WORKSPACES} />
-      </AppLayout>
-      <HighlightBox {...STEP.highlight!} frame={frame} showAt={20} />
-      <CursorOverlay x={STEP.cursor!.x} y={STEP.cursor!.y} frame={frame} clickAt={CLICK_AT} />
-      <ClickRipple   x={STEP.cursor!.x} y={STEP.cursor!.y} frame={frame} triggerAt={CLICK_AT} />
-      <Caption text={STEP.caption} frame={frame} />
-    </AbsoluteFill>
-  );
-};
-```
-
-### Scene template — fill/typing interaction
-
-```tsx
-// src/flows/<flow-slug>/remotion/scenes/Scene_03.tsx
-import React from 'react';
-import { AbsoluteFill, useCurrentFrame, interpolate } from 'remotion';
-import { NewProjectModal } from '../../../../src/features/projects/NewProjectModal';
-import { AppLayout } from '../../../../src/components/AppLayout';
-import { CursorOverlay } from '../overlays/CursorOverlay';
-import { HighlightBox } from '../overlays/HighlightBox';
-import { Caption } from '../overlays/Caption';
-import { FLOW_STEPS } from '../../data/flow';
-
-const STEP = FLOW_STEPS[2];
-const FULL_VALUE = STEP.typedValue!;  // "Q3 Launch Plan"
-const TYPE_START = 30;
-const TYPE_END   = 100;
-
-export const Scene_03: React.FC = () => {
-  const frame = useCurrentFrame();
-  const opacity   = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' });
-  const hlOpacity = interpolate(frame, [15, 27], [0, 1], { extrapolateRight: 'clamp' });
-
-  const charCount = Math.floor(
-    interpolate(frame, [TYPE_START, TYPE_END], [0, FULL_VALUE.length], { extrapolateRight: 'clamp' })
-  );
-  const typedName = FULL_VALUE.slice(0, charCount);
-
-  return (
-    <AbsoluteFill style={{ opacity }}>
-      <AppLayout activePage="dashboard">
-        <NewProjectModal
-          isOpen
-          defaultValues={{ name: typedName }}
-          onClose={() => {}}
-          onSubmit={() => {}}
-        />
-      </AppLayout>
-      <HighlightBox {...STEP.highlight!} frame={frame} showAt={15} />
-      <CursorOverlay x={STEP.cursor!.x} y={STEP.cursor!.y} frame={frame} />
-      <Caption text={STEP.caption} frame={frame} />
-    </AbsoluteFill>
-  );
-};
-```
-
-### Import path rule
-
-Always use relative paths from the scene file to the existing source file.
-Never use path aliases (`@/`) unless confirmed working in the Remotion bundler
-(check `remotion.config.ts` for `webpackOverride` or `vitePlugin` alias config).
-
-### Mock data
-
-If a component requires data (workspaces list, user object, etc.) that only
-exists at runtime, generate `src/flows/<flow-slug>/data/mocks.ts` with typed
-placeholder values that match the component's prop shape. Use realistic values —
-the video will show this data on screen.
-
-### Props that don't exist
-
-If a step requires a UI state the existing component cannot express via props,
-choose one resolution and note it in Gate C:
-
-| Situation | Resolution |
-|---|---|
-| State is visually important, no prop exists | Propose a minimal `__tutorialHighlight?: string` prop addition to the existing file |
-| State is minor / cosmetic | Overlay a `HighlightBox` or `Tooltip` directly in the scene — no component change |
-| Component has no useful state-driving props | Report at Gate A: recommend switching to `software-tutorial-studio` (screenshot mode) for that step |
-
----
-
-## Overlay Components
-
-Generated once per project in `src/flows/<flow-slug>/remotion/overlays/`.
-Same visual language as `ui-flow-studio` — all visual styles in `src/index.css`.
-
-### `HighlightBox.tsx`
-```
-Props: x, y, w, h, frame, showAt, color?
-- className="tut-highlight" from src/index.css
-- Entrance opacity at showAt via style={{ opacity: interpolate(...) }}
-- Pulse scale via style={{ transform }}
-```
-
-### `CursorOverlay.tsx`
-```
-Props: x, y, frame, clickAt?
-- className="tut-cursor" from src/index.css
-- SVG cursor at (x, y)
-- If clickAt: scale pulse via spring()
-```
-
-### `ClickRipple.tsx`
-```
-Props: x, y, frame, triggerAt
-- className="tut-ripple" from src/index.css
-- Scale 0 → 2.5, opacity 0.5 → 0 over 20 frames
-```
-
-### `Caption.tsx`
-```
-Props: text, frame
-- className="tut-caption" from src/index.css
-- Slide up from bottom over 10 frames
-- Typewriter text reveal
-```
-
-Add these to `src/index.css` under `@layer components` if not already present:
-
-```css
-/* ── Playwright Tutorial Overlays ──────────────────────────────── */
-.tut-caption   { @apply absolute bottom-0 left-0 right-0 flex items-center px-8 font-sans; background: rgba(0,0,0,0.75); height: 64px; color: white; font-size: 1.125rem; }
-.tut-highlight { @apply absolute rounded-lg pointer-events-none; border: 2px solid #3B82F6; background: rgba(59,130,246,0.15); }
-.tut-ripple    { @apply absolute rounded-full pointer-events-none; border: 2px solid #60A5FA; }
-.tut-cursor    { @apply absolute pointer-events-none; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
-```
-
----
-
-## `flowTimings.ts`
-
-```typescript
-// src/flows/<flow-slug>/remotion/flowTimings.ts
-
-export const FLOW_TIMINGS = {
-  fps: 30,
-  scenes: [
-    { id: 'step-01', label: 'Dashboard overview',  start: 0,   duration: 60  },
-    { id: 'step-02', label: 'Click New Project',   start: 60,  duration: 75  },
-    { id: 'step-03', label: 'Enter project name',  start: 135, duration: 120 },
-    // ...
-  ],
-  totalFrames: 0, // sum computed at generation time
-} as const;
-```
-
-Default durations by interaction type — minimum values. Increase if captions are long:
-
-| Interaction | Duration | Reasoning |
-|---|---|---|
-| none (establish/result) | **150f (5s)** | Caption typewriter ~2s + ~1.5s reading time at rest |
-| click | **150f (5s)** | Same — click is fast, caption needs the time |
-| fill (short < 20 chars) | **120f (4s)** | Typing animation + read time |
-| fill (long 20+ chars) | **150f (5s)** | — |
-| hover | 90f (3s) | Tooltip visible |
-| scroll | 90f (3s) | Smooth scroll |
-| success / final state | **180f (6s)** | Last frame — hold extra long |
-
-**Why 5s minimum:** The `Caption` typewriter runs at ~40 chars/sec. A typical 80-char caption takes ~2s to finish typing. The viewer then needs at least 1.5s of settled reading time. 2s scenes (60f) guaranteed cut mid-caption.
-
----
-
-## `FlowComposition.tsx`
-
-```tsx
-// src/flows/<flow-slug>/remotion/FlowComposition.tsx
-import React from 'react';
-import { Sequence } from 'remotion';
-import { FLOW_TIMINGS } from './flowTimings';
-import { Scene_01 } from './scenes/Scene_01';
-import { Scene_02 } from './scenes/Scene_02';
-// ... one import per scene
-
-const SCENES = [Scene_01, Scene_02, /* ... */];
-
-export const FlowComposition: React.FC = () => (
-  <>
-    {FLOW_TIMINGS.scenes.map((scene, i) => {
-      const SceneComponent = SCENES[i];
-      return (
-        <Sequence key={scene.id} from={scene.start} durationInFrames={scene.duration}>
-          <SceneComponent />
-        </Sequence>
-      );
-    })}
-  </>
-);
-```
-
-Register in `src/Root.tsx`:
-
-```tsx
-<Composition
-  id="PlaywrightTutorial"
-  component={FlowComposition}
-  durationInFrames={FLOW_TIMINGS.totalFrames}
-  fps={30}
-  width={1920}
-  height={1080}
-/>
-```
-
----
-
-## Gate C — Review Before Render
-
-```
-Flow:     [FLOW-SLUG]
-Task:     [TASK]
-Scenes:   N  |  Duration: ~Xs  |  Output: [FILENAME]
-
-Capture:
-  Source:   scripts/<flow-slug>-capture.ts
-  Manifest: public/screenshots/<flow-slug>/manifest.json
-  Viewport: 1280×720  →  scaled to 1920×1080 (1.5× both axes)
-
-Component mapping:
-  ✅ Step 1 — DashboardPage       (src/pages/DashboardPage.tsx)
-  ✅ Step 2 — DashboardPage       click at (288, 709)
-  ✅ Step 3 — NewProjectModal     typing "Q3 Launch Plan" into name prop
-  ✅ Step 4 — NewProjectModal     name complete, submit highlighted
-  ...
-
-Prop issues (if any):
-  ⚠️  Step 5 — ProjectCard has no highlight prop — using HighlightBox overlay instead
-
-Mock data: src/flows/<flow-slug>/data/mocks.ts
-
-Ready to render?
-```
-
-Await GO / ADJUST.
-
----
-
 ## Gate D — Testing Phase
 
 **Do not start the render until this gate passes and the user confirms.**
-
-Run the full testing sequence in order. Report every result to the user. Only after all checks pass and the user says "go" should you proceed to the render.
 
 ### 1. TypeScript type-check
 
@@ -1893,51 +1112,52 @@ Run the full testing sequence in order. Report every result to the user. Only af
 npx tsc --noEmit
 ```
 
-All generated files (`data/flow.ts`, `data/mocks.ts`, `remotion/flowTimings.ts`, `remotion/scenes/Scene_*.tsx`, `remotion/overlays/*.tsx`) must compile without errors. Fix any type errors before continuing.
+All generated files (`data/flow.ts`, `remotion/msToFrame.ts`, `remotion/RecordingCaption.tsx`, `remotion/VideoComposition.tsx`, `remotion/overlays/HighlightBox.tsx`) must compile without errors.
 
-### 2. Extract a Remotion still for every scene
+### 2. Extract verification stills
 
-```bash
-# Run for every scene — frame = scene.start + 20 (past entrance animation)
-npx remotion still PlaywrightTutorial --frame=<scene.start + 20> \
-  --output=public/screenshots/<flow-slug>/verify-scene<N>.png
-```
-
-Open all stills:
+Pick one frame from each step's overlay window (mid-overlay = `step.overlayStart + step.overlayDuration / 2`):
 
 ```bash
-open public/screenshots/<flow-slug>/verify-scene*.png
+npx remotion still src/remotion-root.tsx RecordingTutorial \
+  --frame=<mid-overlay-frame> \
+  --output=public/recordings/<flow-slug>/verify-step<N>.png
 ```
 
-### 3. Cross-reference with captured screenshots
+Open them all:
 
-For every annotated scene, compare:
-- `verify-scene<N>.png` (Remotion still) — highlight box / cursor position
-- `step-<N>.png` (original Playwright screenshot) — actual element position
+```bash
+open public/recordings/<flow-slug>/verify-step*.png
+```
 
-The highlight ring must sit on the correct element in both images. If it is off, the coordinate scaling is the first thing to check: re-read the manifest `viewport` and confirm `SCALE_X` / `SCALE_Y` in `coords.ts`.
+### 3. Visual verification
 
-### 4. Present testing summary to the user
+For each still, confirm:
+- Highlight box sits on the correct element (compare against the recording at the same timestamp)
+- Caption is showing the expected text and is fully typed by mid-overlay
+- Audio is sequenced at the right step (`step-NN.mp3` matches caption N)
 
-Report the outcome of every check before asking to proceed:
+If a highlight is off, the manifest coordinates are wrong — re-record rather than try to patch coords by hand. The whole point of recording-mode is that coords come straight from the browser.
+
+### 4. Present testing summary
 
 ```
 Testing phase complete
 
 TypeScript: ✅ 0 errors
 
-Remotion stills:
-  Scene 1  public/screenshots/<flow-slug>/verify-scene1.png  ✅ overlay correct
-  Scene 2  public/screenshots/<flow-slug>/verify-scene2.png  ✅ highlight on correct element
-  Scene 3  public/screenshots/<flow-slug>/verify-scene3.png  ✅ cursor positioned correctly
+Verification stills:
+  Step 1  verify-step1.png  ✅ overlay correct
+  Step 2  verify-step2.png  ✅ highlight on 'Add new issue'
+  Step 3  verify-step3.png  ✅ caption matches step
   ...
 
-All N scenes verified.
+All N steps verified.
 
 Ready to render? (yes / adjust first)
 ```
 
-Do not proceed until the user explicitly confirms. If the user wants adjustments, fix them, re-run the affected stills, and present a revised summary before asking again.
+Do not proceed until the user explicitly confirms "go".
 
 ---
 
@@ -1960,7 +1180,7 @@ registerRoot(RemotionRoot); // ← required
 
 ```bash
 cd /path/to/project   # ← must be the project root, not a parent directory
-node_modules/.bin/remotion render src/remotion-root.tsx <CompositionId> \
+node_modules/.bin/remotion render src/remotion-root.tsx RecordingTutorial \
   output/<flow-slug>-<YYYYMMDD>.mp4 \
   --codec=h264 \
   --crf=18
@@ -1972,51 +1192,39 @@ node_modules/.bin/remotion render src/remotion-root.tsx <CompositionId> \
 
 ```
 scripts/
-├── playwright-capture.ts         ← reusable capture helper (written once — capture/recording entries)
-├── interactive-record.ts         ← reusable interactive recorder (written once — interactive-recording entry)
-└── <flow-slug>-capture.ts        ← flow-specific capture script (capture/recording entries only)
-
-public/screenshots/<flow-slug>/
-├── manifest.json                 ← step sequence, coordinates, viewport
-├── step-01.png                   ← reference screenshots (not used in video)
-├── step-02.png
-└── ...
+├── playwright-capture.ts         ← reusable recording helper (scripted-recording)
+├── recording-setup.ts            ← reusable auth/setup helper (scripted-recording)
+├── interactive-record.ts         ← reusable interactive recorder (interactive-recording)
+└── <flow-slug>-recording.ts      ← flow-specific script (scripted-recording only)
 
 public/recordings/<flow-slug>/
-├── recording.webm                ← Playwright recording (recording / interactive-recording)
-│                                    OR copied/converted from user's video (manual-recording)
-├── manifest.json                 ← timed steps + highlight coords + video duration
-├── .ir-start                     ← signal file (transient — interactive-recording only)
-└── .ir-stop                      ← signal file (transient — interactive-recording only)
+├── recording.webm                ← Playwright recording at 1920×1080
+├── manifest.json                 ← timed steps + highlight coords + duration
+├── storage-state.json            ← cookies + localStorage from setup phase (scripted-recording)
+├── start-url.txt                 ← URL captured at end of setup phase (scripted-recording)
+├── .ir-start                     ← signal file (transient — both entries)
+└── .ir-stop                      ← signal file (transient — interactive-recording)
+
+public/audio/<flow-slug>/
+├── step-01.mp3
+├── step-02.mp3
+└── ...
 
 src/flows/<flow-slug>/
 ├── data/
-│   ├── flow.ts                   ← step data + scaled coordinates
-│   └── mocks.ts                  ← typed placeholder data for component props
-├── remotion/
-│   ├── FlowComposition.tsx
-│   ├── coords.ts                 ← toVideoRect / toCursorCenter utilities
-│   ├── flowTimings.ts
-│   ├── scenes/
-│   │   ├── Scene_01.tsx          ← imports from existing app components
-│   │   ├── Scene_02.tsx
-│   │   └── ...
-│   └── overlays/
-│       ├── HighlightBox.tsx
-│       ├── CursorOverlay.tsx
-│       ├── ClickRipple.tsx
-│       └── Caption.tsx
+│   └── flow.ts                   ← TIMED_STEPS + STEPS_WITH_FRAMES
+└── remotion/
+    ├── msToFrame.ts
+    ├── RecordingCaption.tsx
+    ├── VideoComposition.tsx
+    └── overlays/
+        └── HighlightBox.tsx
 
 output/
 └── <flow-slug>-<YYYYMMDD>.mp4   ← final render
 ```
 
-**For `manual-recording` entry:** no `scripts/` files are created, no `public/screenshots/`
-directory. Only `public/recordings/<flow-slug>/recording.webm` (from the user's source video)
-and the manifest (built from user step descriptions).
-
-No `components/` directory is ever created. All scene imports point to the
-user's existing source files.
+No `components/` directory is ever created. Both entries produce the same single-composition shape — no per-scene files, no component discovery, no coordinate scaling.
 
 ---
 
@@ -2024,26 +1232,31 @@ user's existing source files.
 
 All CSS lives in `src/index.css`. No exceptions.
 
-- **Never** write inline visual styles in overlay or scene components
-- `style={{}}` only for animated values driven by `useCurrentFrame()` / `interpolate()` / `spring()`
+- **Never** write inline visual styles in overlay components
+- `style={{}}` only for animated values driven by `useCurrentFrame()` / `interpolate()` / `spring()`, plus the absolute positioning of `HighlightBox`
 - Check `src/index.css` for existing `.tut-*` classes before adding new ones
-- Overlay components (`Caption`, `HighlightBox`, `CursorOverlay`, `ClickRipple`) reference
-  classes from `src/index.css` — never hardcoded color/size values in JSX
+
+Add these to `src/index.css` under `@layer components` if not already present:
+
+```css
+/* ── Playwright Tutorial Overlays ──────────────────────────────── */
+.tut-caption   { @apply absolute bottom-0 left-0 right-0 flex items-center px-8 font-sans; background: rgba(0,0,0,0.75); height: 64px; color: white; font-size: 1.125rem; }
+.tut-highlight { @apply absolute rounded-lg pointer-events-none; border: 2px solid #3B82F6; background: rgba(59,130,246,0.15); }
+```
 
 ---
 
 ## Final Checklist
 
 ### Setup
-- [ ] Preflight passed — Playwright, tsx, Remotion, app URL all verified
-- [ ] `scripts/playwright-capture.ts` written to project
+- [ ] Preflight passed — Playwright, tsx, Remotion verified
 
-### Manual Recording (manual-recording entry)
-- [ ] Video file verified — ffprobe metadata reported (duration, resolution, fps, codec)
-- [ ] Video prepared at `public/recordings/<flow-slug>/recording.webm`
-- [ ] Step descriptions collected (interactively or parsed from activation input)
-- [ ] Manifest built at `public/recordings/<flow-slug>/manifest.json` and approved by user
-- [ ] Continue from Step 1c (TTS audio) then Step 2b (VideoComposition)
+### Scripted Recording (scripted-recording entry)
+- [ ] Setup phase decision — `auto` (default) or `skip` confirmed at activation
+- [ ] **If `Setup: auto`:** `scripts/recording-setup.ts` written, run as background task, user confirmed starting page → `.ir-start` written → `storage-state.json` + `start-url.txt` present
+- [ ] `scripts/playwright-capture.ts` written to project (or already present)
+- [ ] `scripts/<flow-slug>-recording.ts` generated and reviewed by user
+- [ ] Recording script run — `recording.webm` and `manifest.json` confirmed present
 
 ### Interactive Recording (interactive-recording entry)
 - [ ] `scripts/interactive-record.ts` written to project (or already present)
@@ -2051,37 +1264,23 @@ All CSS lives in `src/index.css`. No exceptions.
 - [ ] User logged in / navigated to start page → `.ir-start` written → recording phase active
 - [ ] User completed flow → `.ir-stop` written → background task reports completion
 - [ ] `recording.webm` and `manifest.json` confirmed at `public/recordings/<flow-slug>/`
-- [ ] Captured steps reviewed; captions refined and approved by user
-- [ ] Continue from Step 1c (TTS audio) then Step 2b (VideoComposition)
 
-### Capture (capture entry)
-- [ ] `scripts/<flow-slug>-capture.ts` generated and reviewed by user
-- [ ] Capture script run — `manifest.json` confirmed present
-- [ ] Manifest read and step summary reported
+### Caption Gate
+- [ ] Captions refined into viewer-friendly second-person prose
+- [ ] Highlight schedule reviewed
+- [ ] User approved schedule before generating composition
 
-### Analysis
-- [ ] Component discovery complete — props and visual roles documented
-- [ ] Component-to-step mapping confirmed by user
-- [ ] Coordinates scaled from viewport to video space in `coords.ts`
-- [ ] Step plan presented and approved (Gate A)
-
-### Generation
-- [ ] `data/flow.ts` generated — scaled coordinates baked in
-- [ ] `data/mocks.ts` generated — realistic typed placeholder data
-- [ ] `remotion/flowTimings.ts` generated — complete frame map
-- [ ] All scene files generated — imports point to existing app paths
-- [ ] All overlay files generated
-- [ ] `FlowComposition.tsx` assembled
-- [ ] Composition registered in `src/Root.tsx`
+### Audio + Composition
+- [ ] TTS audio generated for every caption — `public/audio/<flow-slug>/step-NN.mp3`
+- [ ] Audio durations measured via ffprobe and stored in `flow.ts`
+- [ ] `data/flow.ts`, `msToFrame.ts`, `RecordingCaption.tsx`, `VideoComposition.tsx`, `HighlightBox.tsx` generated
+- [ ] Composition registered in `src/Root.tsx` / `src/remotion-root.tsx`
 - [ ] `.tut-*` overlay classes present in `src/index.css`
-- [ ] Any prop-gap situations documented and resolved
-- [ ] Gate C review approved
 
 ### Testing (Gate D — must complete before render)
-- [ ] TypeScript type-check passed — 0 errors across all generated files
-- [ ] Remotion still extracted for every scene
-- [ ] All stills cross-referenced against captured screenshots — overlays on correct elements
-- [ ] Testing summary presented to user
+- [ ] TypeScript type-check passed — 0 errors
+- [ ] Verification still extracted for every step
+- [ ] All highlights and captions confirmed correct
 - [ ] User confirmed "go" before render started
 
 ### Render
