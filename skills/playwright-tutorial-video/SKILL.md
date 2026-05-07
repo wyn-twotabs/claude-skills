@@ -2,14 +2,15 @@
 name: playwright-tutorial-video
 description: >
   Record a real user flow with Playwright, then generate a Remotion tutorial video.
-  Four entry points: capture (discrete screenshots + coordinates per step),
-  recording (continuous video with timestamp-synced overlays), from-manifest
-  (re-generate scenes from existing manifest), or manual-recording (bring your
-  own screen recording and manually describe the steps — Claude asks for
-  step details interactively, no Playwright run needed).
-  No new UI code created.
+  Five entry points: capture (discrete screenshots + coordinates per step),
+  recording (scripted Playwright automation with timestamp-synced overlays),
+  interactive-recording (you drive Chromium manually while Playwright records
+  the video and auto-captures click coordinates — pixel-perfect highlights
+  with no scripting), from-manifest (re-generate scenes from existing manifest),
+  or manual-recording (bring your own screen recording and manually describe
+  steps — no Playwright run needed). No new UI code created.
 metadata:
-  tags: playwright, remotion, tutorial, live-components, automation, frontend, coordinates, onboarding, recording, video
+  tags: playwright, remotion, tutorial, live-components, automation, frontend, coordinates, onboarding, recording, video, interactive
 ---
 
 # Claude Code Skill: Playwright Tutorial Video
@@ -36,14 +37,16 @@ Your app (running)
 | Entry | When to use | Output |
 |---|---|---|
 | `capture` | App is running — discrete screenshot per step | N scene files, each with a screenshot background |
-| `recording` | App is running — one continuous video of the whole flow | Single `VideoComposition` with `OffthreadVideo` background + timestamp-synced overlays |
+| `recording` | App is running — scripted Playwright automation produces one continuous video | Single `VideoComposition` with `OffthreadVideo` background + timestamp-synced overlays |
+| `interactive-recording` | App is running — you drive Chromium manually, Playwright records + auto-captures click coordinates | Same `VideoComposition` as recording — but coordinates come from real `getBoundingClientRect()` calls during your live flow, no scripting required |
 | `from-manifest` | Capture already done — regenerate scenes from existing manifest | Same as whichever entry produced the manifest |
 | `manual-recording` | You already have a screen recording (.mp4, .mov, .webm, .avi) and want to manually describe the steps — no Playwright run needed | Same `VideoComposition` as recording mode — OffthreadVideo + captions + highlights |
 
-**Choosing between `capture` and `recording`:**
+**Choosing between entries:**
 - Use `capture` when the flow has distinct, pausable states you want to show one at a time
-- Use `recording` when the flow has continuous motion (scroll, drag, typing) or you want the real interactions visible in the video rather than simulated cursor overlays
-- Use `manual-recording` when you already have a recording from QuickTime, Loom, OBS, or any other tool and want to manually describe each step (timestamp + caption + highlight area) so Claude can layer captions, highlights, and narration on top — no Playwright run, no automated step extraction
+- Use `recording` when you can write a Playwright script that performs the flow — fully automated, repeatable
+- Use `interactive-recording` when the flow needs human judgement (logging in with 2FA, navigating an app you can't easily script) — you drive the browser by hand, but coordinates are still pixel-perfect because Playwright captures bounding boxes live
+- Use `manual-recording` when you already have a recording from QuickTime, Loom, OBS, or any other tool and want to manually describe each step (timestamp + caption + highlight area) — no Playwright run, no automated step extraction
 
 ---
 
@@ -52,7 +55,7 @@ Your app (running)
 ```
 🎭 Activate Playwright Tutorial
 
-Entry: [capture | recording | from-manifest | manual-recording]
+Entry: [capture | recording | interactive-recording | from-manifest | manual-recording]
 
 # For capture entry:
 App URL:    [e.g. http://localhost:3000]
@@ -65,6 +68,10 @@ Selectors:  [optional — CSS selectors or ARIA labels for key elements; Claude 
 App URL:    [e.g. http://localhost:3000]
 Task:       [what the user does — the full flow to record end-to-end]
 Selectors:  [optional — Claude infers from the task]
+
+# For interactive-recording entry (Claude opens Chromium, you drive it manually):
+App URL:    [e.g. https://linear.app — where Chromium should open]
+Task:       [overall description of what you'll demonstrate]
 
 # For from-manifest entry:
 Manifest:   [path to manifest.json — e.g. "public/screenshots/onboarding/manifest.json"]
@@ -88,20 +95,21 @@ Steps:      [optional — manually describe each key moment with timestamp + cap
 Initialize at activation and maintain across all steps:
 
 ```
-entry:            <capture | recording | from-manifest | manual-recording>
+entry:            <capture | recording | interactive-recording | from-manifest | manual-recording>
 app_url:          <URL of running app — omit for manual-recording entry>
 task:             <what the user is doing>
 flow_slug:        <kebab-case — e.g. "onboarding-checklist">
-component_paths:  <list of resolved paths — omit for recording/manual-recording entry>
+component_paths:  <list of resolved paths — omit for recording/interactive-recording/manual-recording entry>
 shell_path:       <optional — path to existing shell/layout component>
-viewport:         <populated from manifest — e.g. { width: 1280, height: 720 }>
+viewport:         <always 1920×1080 for interactive-recording; populated from manifest otherwise>
 video:            { width: 1920, height: 1080, fps: 30 }
-manifest_path:    public/recordings/<flow-slug>/manifest.json   ← recording/manual-recording entry
+manifest_path:    public/recordings/<flow-slug>/manifest.json   ← recording/interactive-recording/manual-recording entry
                   public/screenshots/<flow-slug>/manifest.json  ← capture entry
 render_output:    output/<flow-slug>-<YYYYMMDD>.mp4
 discovered:       [] ← capture entry only
 video_source:     <original video path — manual-recording entry only>
 video_info:       <populated from ffprobe — duration, resolution, fps, codec — manual-recording entry only>
+recorder_pid:     <background task id of interactive-record.ts — interactive-recording entry only>
 ```
 
 ---
@@ -155,6 +163,380 @@ npx tsx --version
 ```
 ✅ Preflight passed. Proceeding with flow: [FLOW-SLUG]
 ```
+
+---
+
+## Step 0ir: Preflight — interactive-recording entry
+
+**Skip the main Step 0 preflight for `interactive-recording`.** No app dev-server check needed — the user navigates to a live site (their own app, Linear, Notion, anything reachable in a browser).
+
+Run only these checks:
+
+```bash
+# Playwright + chromium provisioned
+npx playwright --version
+npx playwright install chromium --dry-run 2>&1 | head -1
+
+# tsx for running the recorder
+npx tsx --version
+
+# Remotion project initialized
+node -e "require('./package.json').dependencies['remotion'] && console.log('ok')"
+```
+
+Confirm the URL is reachable from a normal browser (don't curl — Linear, Notion etc. require login and may return 4xx without cookies).
+
+```
+✅ Preflight passed. Proceeding with flow: [FLOW-SLUG]
+```
+
+---
+
+## Step 1ir: Generate Recorder Script — interactive-recording entry
+
+Write `scripts/interactive-record.ts` to the project **once** — skip if already present.
+
+This is the reusable interactive recording helper. It:
+- Launches headed Chromium at exactly **1920×1080**
+- Phase 1: lets the user log in / navigate (no recording yet)
+- Phase 2: reopens with `recordVideo` active, restores `storageState` (cookies + localStorage), navigates back to the URL the user reached at end of Phase 1
+- Captures every click via an injected `addEventListener('click', …, true)` that calls `exposeFunction` callbacks with the element's `getBoundingClientRect()`, text, and aria-label
+- Captures SPA route changes via `MutationObserver`
+- Writes a `RecordingManifest`-compatible JSON with pixel-perfect coordinates
+
+**Two modes for advancing phases:**
+- **TTY mode** (run from a real terminal): readline `prompt()` — user presses ENTER
+- **File-signal mode** (run from Claude Code, where stdin isn't a TTY): the script polls for `.ir-start` and `.ir-stop` files inside the recording dir. Claude advances phases by `touch`-ing those files at the right moments.
+
+The script auto-detects `process.stdin.isTTY` and switches mode.
+
+```typescript
+// scripts/interactive-record.ts
+// Usage: npx tsx scripts/interactive-record.ts <flow-slug> <start-url>
+//
+// Drive from chat: touch public/recordings/<flow-slug>/.ir-start to begin
+// recording, then .ir-stop when the flow is complete.
+
+import { chromium, type BrowserContext } from 'playwright';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as readline from 'readline';
+
+const [, , FLOW_SLUG, START_URL] = process.argv;
+if (!FLOW_SLUG || !START_URL) {
+  console.error('\nUsage: npx tsx scripts/interactive-record.ts <flow-slug> <start-url>\n');
+  process.exit(1);
+}
+
+const RECORDING_DIR = path.join('public', 'recordings', FLOW_SLUG);
+const VIDEO_FINAL   = path.join(RECORDING_DIR, 'recording.webm');
+const MANIFEST_PATH = path.join(RECORDING_DIR, 'manifest.json');
+const VIEWPORT      = { width: 1920, height: 1080 } as const;
+const SIGNAL_START  = path.join(RECORDING_DIR, '.ir-start');
+const SIGNAL_STOP   = path.join(RECORDING_DIR, '.ir-stop');
+
+// Wait for either ENTER (TTY) or a signal file (non-TTY)
+function waitForSignal(signalFile: string, ttyPrompt: string): Promise<void> {
+  fs.mkdirSync(path.dirname(signalFile), { recursive: true });
+  // Clean any stale signal from a previous run
+  if (fs.existsSync(signalFile)) fs.unlinkSync(signalFile);
+
+  if (process.stdin.isTTY) {
+    return new Promise(resolve => {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      process.stdout.write(ttyPrompt);
+      rl.once('line', () => { rl.close(); resolve(); });
+    });
+  }
+
+  // File-poll mode for non-TTY (Claude Code background tasks)
+  return new Promise(resolve => {
+    const interval = setInterval(() => {
+      if (fs.existsSync(signalFile)) {
+        fs.unlinkSync(signalFile);
+        clearInterval(interval);
+        resolve();
+      }
+    }, 250);
+  });
+}
+
+interface RawClick { timestamp: number; x: number; y: number; width: number; height: number; text: string; ariaLabel: string; tagName: string; }
+interface RawNav   { timestamp: number; url: string; }
+
+// ── phase 1: setup, no recording ─────────────────────────────────────────
+async function setup(): Promise<{ storageState: Awaited<ReturnType<BrowserContext['storageState']>>; url: string }> {
+  console.log('\n┌───────────────────────────────────────────────────────┐');
+  console.log('│  🎭  Interactive Recorder — Phase 1: Setup            │');
+  console.log('│  Browser is open. Log in and navigate to start page.  │');
+  console.log('└───────────────────────────────────────────────────────┘\n');
+  console.log(`  Signals (non-TTY mode):`);
+  console.log(`    Start:  touch ${SIGNAL_START}`);
+  console.log(`    Stop:   touch ${SIGNAL_STOP}\n`);
+
+  const browser = await chromium.launch({
+    headless: false,
+    args: ['--disable-infobars', '--no-default-browser-check'],
+  });
+
+  const ctx  = await browser.newContext({ viewport: VIEWPORT });
+  const page = await ctx.newPage();
+  await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
+
+  await waitForSignal(SIGNAL_START, '\n  Ready to record? Press ENTER › ');
+
+  const url          = page.url();
+  const storageState = await ctx.storageState();
+  await ctx.close();
+  await browser.close();
+
+  console.log(`\n  Session saved. Recording will start at: ${url}\n`);
+  return { storageState, url };
+}
+
+// ── phase 2: record ──────────────────────────────────────────────────────
+async function record(
+  storageState: Awaited<ReturnType<BrowserContext['storageState']>>,
+  startUrl: string,
+): Promise<void> {
+  console.log('┌───────────────────────────────────────────────────────┐');
+  console.log('│  Phase 2 — Recording                                  │');
+  console.log('│  Perform your flow. Every click is captured.          │');
+  console.log('└───────────────────────────────────────────────────────┘\n');
+
+  fs.mkdirSync(RECORDING_DIR, { recursive: true });
+
+  const browser = await chromium.launch({
+    headless: false,
+    args: ['--disable-infobars', '--no-default-browser-check'],
+  });
+
+  const ctx = await browser.newContext({
+    viewport: VIEWPORT,
+    storageState,
+    recordVideo: { dir: RECORDING_DIR, size: VIEWPORT },
+  });
+
+  const page = await ctx.newPage();
+  const rawClicks: RawClick[] = [];
+  const rawNavs:   RawNav[]   = [];
+
+  await page.exposeFunction('__irClick', (e: RawClick) => { rawClicks.push(e); });
+  await page.exposeFunction('__irNav',   (e: RawNav)   => { rawNavs.push(e);   });
+
+  await page.addInitScript(() => {
+    document.addEventListener('click', function (ev: MouseEvent) {
+      let el = ev.target as HTMLElement;
+      // Walk up to a meaningful ancestor if target is a tiny inline icon
+      for (let i = 0; i < 5 && el.parentElement; i++) {
+        const r = el.getBoundingClientRect();
+        if (r.width >= 16 && r.height >= 16) break;
+        el = el.parentElement;
+      }
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return;
+      const raw = ((el as HTMLElement).innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+      (window as any).__irClick({
+        timestamp: Date.now(),
+        x: Math.round(r.left), y: Math.round(r.top),
+        width:  Math.round(Math.min(r.width,  1800)),
+        height: Math.round(Math.min(r.height, 900)),
+        text: raw.slice(0, 80),
+        ariaLabel: el.getAttribute('aria-label') || '',
+        tagName: el.tagName.toLowerCase(),
+      });
+    }, true);
+
+    let _lastUrl = location.href;
+    new MutationObserver(() => {
+      if (location.href !== _lastUrl) {
+        _lastUrl = location.href;
+        (window as any).__irNav({ timestamp: Date.now(), url: location.href });
+      }
+    }).observe(document.documentElement, { subtree: true, childList: true });
+  });
+
+  await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
+  const t0 = Date.now();
+  console.log('  🔴  Recording!  Do your thing...\n');
+
+  const stopPromise   = waitForSignal(SIGNAL_STOP, '  Done? Press ENTER › ');
+  const closedPromise = new Promise<void>(r => (page as any).once('close', r));
+  await Promise.race([stopPromise, closedPromise]);
+
+  const durationMs = Date.now() - t0;
+  await ctx.close().catch(() => {});
+  await browser.close().catch(() => {});
+
+  // Rename raw video
+  const rawFiles = fs.readdirSync(RECORDING_DIR).filter(f => f.endsWith('.webm') && f !== 'recording.webm');
+  if (rawFiles.length === 0) throw new Error(`No .webm found in ${RECORDING_DIR}`);
+  fs.renameSync(path.join(RECORDING_DIR, rawFiles[0]), VIDEO_FINAL);
+
+  // Build manifest
+  type Step = {
+    step: number; label: string; caption: string; startMs: number;
+    interaction: 'click' | 'none';
+    element: { selector: string; x: number; y: number; width: number; height: number } | null;
+  };
+  const timeline = [
+    ...rawClicks.map(c => ({ kind: 'click' as const, ...c })),
+    ...rawNavs.map(n   => ({ kind: 'nav'   as const, ...n })),
+  ].sort((a, b) => a.timestamp - b.timestamp);
+
+  const steps: Step[] = [];
+  for (let i = 0; i < timeline.length; i++) {
+    const ev = timeline[i];
+    if (ev.timestamp < t0) continue;
+    const startMs = ev.timestamp - t0;
+
+    if (ev.kind === 'nav') {
+      steps.push({ step: 0, label: `Navigate → ${new URL(ev.url).pathname.slice(0, 50)}`, caption: '', startMs, interaction: 'none', element: null });
+      continue;
+    }
+    if (ev.width  > VIEWPORT.width  * 0.9) continue;
+    if (ev.height > VIEWPORT.height * 0.9) continue;
+    const prev = timeline[i - 1];
+    if (prev?.kind === 'click' && ev.timestamp - prev.timestamp < 200) continue;
+
+    steps.push({
+      step: 0,
+      label: (ev.ariaLabel || ev.text || `${ev.tagName} click`).slice(0, 60),
+      caption: '', startMs, interaction: 'click',
+      element: { selector: 'captured', x: ev.x, y: ev.y, width: ev.width, height: ev.height },
+    });
+  }
+  steps.forEach((s, i) => { s.step = i + 1; });
+
+  const manifest = {
+    flowSlug:        FLOW_SLUG,
+    capturedAt:      new Date().toISOString(),
+    recordingFile:   VIDEO_FINAL,
+    videoDurationMs: durationMs,
+    viewport:        VIEWPORT,
+    steps,
+  };
+  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
+
+  console.log(`\n✅  Recording complete!`);
+  console.log(`   Video     ${VIDEO_FINAL}   (${(durationMs / 1000).toFixed(1)}s)`);
+  console.log(`   Manifest  ${MANIFEST_PATH}`);
+  console.log(`   Steps     ${steps.length} captured\n`);
+  steps.forEach(s => {
+    const t = (s.startMs / 1000).toFixed(2).padStart(7);
+    const el = s.element ? `  [${s.element.x}, ${s.element.y}, ${s.element.width}×${s.element.height}]` : '';
+    console.log(`   ${String(s.step).padStart(2)}.  ${t}s  ${s.label}${el}`);
+  });
+}
+
+(async () => {
+  try {
+    const { storageState, url } = await setup();
+    await record(storageState, url);
+  } catch (err) {
+    console.error('\n❌ Error:', (err as Error).message);
+    process.exit(1);
+  }
+})();
+```
+
+This file is generated **once per project**. If `scripts/interactive-record.ts` already exists, skip generation and proceed.
+
+---
+
+## Step 2ir: Run Recorder + Drive From Chat — interactive-recording entry
+
+Run the script as a **background task** so it stays alive while Claude waits for user signals:
+
+```bash
+mkdir -p public/recordings/<flow-slug>
+npx tsx scripts/interactive-record.ts <flow-slug> <start-url>
+```
+
+Then drive the two phases by writing signal files at the right moments.
+
+### The conversation pattern
+
+```
+1. Claude:   "Chromium is open. Log in and navigate to the right starting point.
+              Tell me when you're ready to record."
+2. User:     "I'm at the right page"
+3. Claude:   touch public/recordings/<flow-slug>/.ir-start
+             "Recording is live. Do your flow naturally — every click is captured.
+              Tell me when you're done."
+4. User:     "done"
+5. Claude:   touch public/recordings/<flow-slug>/.ir-stop
+             [waits for the script to finalise, reads the produced manifest]
+6. Claude:   "Captured N clicks. Manifest at <path>. Continuing to composition..."
+```
+
+### What the user provides
+- `App URL:` — passed as `<start-url>` to the script
+- `Task:` — informs caption text and flow naming
+
+### What the user does NOT provide
+- No video file (Playwright records it)
+- No step descriptions (clicks are auto-captured)
+- No coordinate guesses (real `getBoundingClientRect()` calls)
+
+### Why coordinates are pixel-perfect
+- Viewport is exactly 1920×1080
+- `recordVideo.size` is exactly 1920×1080
+- `getBoundingClientRect()` returns CSS pixel coordinates in the same 1920×1080 space
+- Three coordinate spaces collapse into one — no scaling, no math, no estimation
+
+### Notes for Claude
+- After `touch .ir-stop`, **wait until the background task reports completion** before reading the manifest. The `.webm` is finalised on context close, which takes 1–3s.
+- If the user closes the Chromium window manually (instead of signalling), the script handles that path too via `page.once('close')`. The manifest is still written.
+- The recorder rejects clicks that cover >90% of the viewport (background clicks) and clicks within 200ms of the previous one (double-click noise) — no need to filter further.
+- If a recording attempt produces zero usable steps (e.g. user only navigated, never clicked), offer to re-run rather than building an empty composition.
+
+---
+
+## Step 3ir: Read Manifest + Continue — interactive-recording entry
+
+After `.ir-stop` and the background task completes:
+
+```bash
+cat public/recordings/<flow-slug>/manifest.json
+```
+
+Report:
+```
+Manifest read: public/recordings/<flow-slug>/manifest.json
+Recorded: <duration>s at 1920×1080
+Steps: N captured
+
+  1  [click] @0.0s   <label>      → x:..., y:..., w×h
+  2  [click] @2.1s   <label>      → ...
+  ...
+```
+
+The captured `label` field is element text or aria-label — useful but not viewer-friendly. Captions are empty in the manifest.
+
+**Refine captions before generating the composition:**
+- Combine multiple captured clicks into a single caption phase when they're part of one logical step (e.g. open dropdown + select option = one caption "Set priority to High")
+- Write captions in the second person, present tense: "Click 'Add new issue' to start creating one."
+- Keep captions ≤ 90 chars where possible — captions auto-typewriter at ~40 chars/sec
+
+**Show the user the proposed caption + highlight schedule and gate before generating files:**
+
+```
+Captions (N phases):
+  0–13.1s  Linear's board organises every issue by workflow status...
+  13.1–16.2s  Click 'Add new issue' to create one in the current column.
+  ...
+
+Highlights (N regions):
+  h-add-issue     13.1–16.2s   x:611  y:769  w:320  h:28
+  h-title         16.2–21.5s   x:604  y:198  w:712  h:24
+  ...
+
+Does this look right?
+```
+
+After approval, **continue to Step 1c (TTS audio) and Step 2b (Recording Mode Remotion Composition)** — same pipeline as the `recording` entry. The manifest format is identical, so all downstream code reuses without changes.
 
 ---
 
@@ -1590,8 +1972,9 @@ node_modules/.bin/remotion render src/remotion-root.tsx <CompositionId> \
 
 ```
 scripts/
-├── playwright-capture.ts         ← reusable capture helper (written once)
-└── <flow-slug>-capture.ts        ← flow-specific capture script
+├── playwright-capture.ts         ← reusable capture helper (written once — capture/recording entries)
+├── interactive-record.ts         ← reusable interactive recorder (written once — interactive-recording entry)
+└── <flow-slug>-capture.ts        ← flow-specific capture script (capture/recording entries only)
 
 public/screenshots/<flow-slug>/
 ├── manifest.json                 ← step sequence, coordinates, viewport
@@ -1600,9 +1983,11 @@ public/screenshots/<flow-slug>/
 └── ...
 
 public/recordings/<flow-slug>/
-├── recording.webm                ← Playwright recording (recording entry)
-│                                    OR copied/converted from user's video (manual-recording entry)
-└── manifest.json                 ← timed steps + highlight coords + video duration
+├── recording.webm                ← Playwright recording (recording / interactive-recording)
+│                                    OR copied/converted from user's video (manual-recording)
+├── manifest.json                 ← timed steps + highlight coords + video duration
+├── .ir-start                     ← signal file (transient — interactive-recording only)
+└── .ir-stop                      ← signal file (transient — interactive-recording only)
 
 src/flows/<flow-slug>/
 ├── data/
@@ -1658,6 +2043,15 @@ All CSS lives in `src/index.css`. No exceptions.
 - [ ] Video prepared at `public/recordings/<flow-slug>/recording.webm`
 - [ ] Step descriptions collected (interactively or parsed from activation input)
 - [ ] Manifest built at `public/recordings/<flow-slug>/manifest.json` and approved by user
+- [ ] Continue from Step 1c (TTS audio) then Step 2b (VideoComposition)
+
+### Interactive Recording (interactive-recording entry)
+- [ ] `scripts/interactive-record.ts` written to project (or already present)
+- [ ] Recorder running as background task: `npx tsx scripts/interactive-record.ts <slug> <url>`
+- [ ] User logged in / navigated to start page → `.ir-start` written → recording phase active
+- [ ] User completed flow → `.ir-stop` written → background task reports completion
+- [ ] `recording.webm` and `manifest.json` confirmed at `public/recordings/<flow-slug>/`
+- [ ] Captured steps reviewed; captions refined and approved by user
 - [ ] Continue from Step 1c (TTS audio) then Step 2b (VideoComposition)
 
 ### Capture (capture entry)
