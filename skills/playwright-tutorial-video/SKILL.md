@@ -43,26 +43,83 @@ Both entries produce the **same downstream artifacts**: one `recording.webm`, on
 
 ## Activation
 
+Trigger phrase: `🎭 Activate Playwright Tutorial` (or `/playwright-tutorial-video`). This is the **only** trigger — do not activate from unrelated messages.
+
+Once triggered, **gather inputs one at a time using the `AskUserQuestion` tool**. Do NOT present a single fill-in-the-blank template. Ask each question as its own `AskUserQuestion` call so the user can answer interactively.
+
+### Question sequence
+
+Ask these in order. For each question, pass `multiSelect: false` and set `header` to a short label.
+
+**Q1 — Entry point** (multi-choice):
 ```
-🎭 Activate Playwright Tutorial
-
-Entry: [scripted-recording | interactive-recording]
-
-# For scripted-recording entry:
-App URL:    [e.g. http://localhost:3000]
-Task:       [what the user does — the full flow to record end-to-end]
-Selectors:  [optional — Claude infers from the task]
-Setup:      [auto (default) — open Chromium first to confirm/log-in/navigate to starting page,
-             then run the headless recording with the captured session
-            | skip — go straight to headless recording (only if URL is public + already at start)]
-
-# For interactive-recording entry (Claude opens Chromium, you drive it manually):
-App URL:    [e.g. https://linear.app — where Chromium should open]
-Task:       [overall description of what you'll demonstrate]
+question: "Which recording mode?"
+header: "Entry"
+options:
+  - label: "scripted-recording"
+    description: "Playwright script automates the flow end-to-end. Use when the flow is deterministic and your app is local."
+  - label: "interactive-recording"
+    description: "You drive Chromium manually; every click is auto-captured. Use for login flows, branching paths, or third-party UIs."
 ```
 
-> `🎭 Activate Playwright Tutorial` is the **only** trigger.
-> Do not activate from unrelated messages.
+**Q2 — App URL** (free text):
+```
+question: "What URL should Chromium open?"
+header: "App URL"
+options:
+  - label: "Other"
+    description: "Type the URL (e.g. http://localhost:3000 or https://linear.app)"
+```
+
+**Q3 — Task description** (free text):
+```
+question: "Describe the flow you want to record end-to-end."
+header: "Task"
+options:
+  - label: "Other"
+    description: "What does the user do, step by step?"
+```
+
+**Q4 — Viewport** (multi-choice — ask for both entries):
+```
+question: "What viewport size should Chromium use? Pick a size that fits your monitor."
+header: "Viewport"
+options:
+  - label: "1920×1080 (default)"
+    description: "Native HD. Best output quality. Requires a monitor at least ~1920×1100 to display the headed window without overflow."
+  - label: "1600×900"
+    description: "Fits most laptops (e.g. 1710×1112 MacBook Air). Final video renders at 1600×900."
+  - label: "1440×900"
+    description: "Smaller laptops. Final video renders at 1440×900."
+```
+
+If user picks a non-default viewport, pass it to the recorder via env vars: `IR_WIDTH=<w> IR_HEIGHT=<h> npx tsx scripts/interactive-record.ts ...`. Also update the Remotion `<Composition width=... height=...>` and `recordVideo.size` in the scripted recorder to match.
+
+**If Entry == scripted-recording, also ask:**
+
+**Q5 — Setup mode** (multi-choice):
+```
+question: "Open Chromium first so you can log in / navigate to the starting page?"
+header: "Setup"
+options:
+  - label: "auto"
+    description: "Open Chromium first, you confirm the starting page, then run the headless recording with that session. (Recommended)"
+  - label: "skip"
+    description: "Go straight to headless recording. Only safe if the URL is public and already at the start state."
+```
+
+**Q6 — Selectors** (free text, optional):
+```
+question: "Any specific selectors to use? (Optional — leave blank and I'll infer from the task.)"
+header: "Selectors"
+options:
+  - label: "Skip"
+    description: "Let Claude infer selectors from the task description"
+  - label: "Other"
+    description: "Provide selectors (one per line)"
+```
+
+After all answers are collected, summarize the captured inputs back to the user in a short block before proceeding to Step 0 (Preflight).
 
 ---
 
